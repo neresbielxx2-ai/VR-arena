@@ -12,22 +12,13 @@ class SettingsPanel(
 
     // VR Settings
     var vrQuality: String = "Alta"
-    var uiDistance: Float = 1.3f
-    var uiScale: Float = 1.0f
+    var uiDistance: Float = 1.35f
     var mirrorLeftRight: Boolean = false
     var invertX: Boolean = false
     var invertY: Boolean = false
 
     // Performance Settings
     var economicMode: Boolean = false
-    var targetFps: Int = 60
-    var animationsEnabled: Boolean = true
-
-    // Hand Tracking Settings
-    var handTrackingEnabled: Boolean = true
-    var handSensitivity: Float = 1.0f
-    var showFingerRay: Boolean = true
-    var markerRadius: Float = 0.025f
 
     val buttons = mutableListOf<AppButton>()
 
@@ -37,12 +28,12 @@ class SettingsPanel(
 
     fun setupSettingsButtons() {
         buttons.clear()
-        val zPos = -1.1f
-        val startY = 0.25f
-        val btnW = 0.45f
+        val zPos = -1.30f
+        val startY = 0.22f
+        val btnW = 0.46f
         val btnH = 0.09f
-        val colLeft = -0.35f
-        val colRight = 0.35f
+        val colLeft = -0.36f
+        val colRight = 0.36f
 
         // Row 1: Mode toggles
         buttons.add(
@@ -57,10 +48,8 @@ class SettingsPanel(
         )
 
         buttons.add(
-            AppButton("btn_ht", "Mão/Ray: ${if (handTrackingEnabled) "LIGADO" else "DESLIG"}", colRight, startY, zPos, btnW, btnH) {
-                handTrackingEnabled = !handTrackingEnabled
-                setupSettingsButtons()
-                onSettingChanged()
+            AppButton("btn_recenter_settings", "🎯 Centralizar Visão", colRight, startY, zPos, btnW, btnH) {
+                vrSession.recenterManager.triggerRecenter()
             }
         )
 
@@ -83,7 +72,7 @@ class SettingsPanel(
             }
         )
 
-        // Row 3: Stereo Mirror & Ray Line
+        // Row 3: Stereo Mirror
         buttons.add(
             AppButton("btn_mirror", "Espelhar Olhos: ${if (mirrorLeftRight) "SIM" else "NÃO"}", colLeft, startY - 0.24f, zPos, btnW, btnH) {
                 mirrorLeftRight = !mirrorLeftRight
@@ -94,24 +83,7 @@ class SettingsPanel(
         )
 
         buttons.add(
-            AppButton("btn_ray", "Linha do Dedo: ${if (showFingerRay) "LIGADA" else "DESLIG"}", colRight, startY - 0.24f, zPos, btnW, btnH) {
-                showFingerRay = !showFingerRay
-                setupSettingsButtons()
-                onSettingChanged()
-            }
-        )
-
-        // Row 4: UI Distance & Recenter
-        buttons.add(
-            AppButton("btn_dist", "Distância UI: ${String.format("%.1f", uiDistance)}m", colLeft, startY - 0.36f, zPos, btnW, btnH) {
-                uiDistance = if (uiDistance >= 1.8f) 1.0f else (uiDistance + 0.2f)
-                setupSettingsButtons()
-                onSettingChanged()
-            }
-        )
-
-        buttons.add(
-            AppButton("btn_close_settings", "✖ Fechar Painel", colRight, startY - 0.36f, zPos, btnW, btnH) {
+            AppButton("btn_close_settings", "✖ Fechar Painel", colRight, startY - 0.24f, zPos, btnW, btnH) {
                 isVisible = false
                 onSettingChanged()
             }
@@ -120,13 +92,12 @@ class SettingsPanel(
 
     fun getSystemInfoText(report: HardwareReport): String {
         return """
-            LUNAR VR v1.0.0
+            LUNAR VR v1.0.1
             Dispositivo: ${report.deviceModel}
             Sistema: ${report.osVersion}
             Memória RAM: ${report.totalRamMb} MB
-            Giroscópio: ${if (report.hasGyroscope) "Presente" else "Ausente (Emulado)"}
+            Giroscópio: ${if (report.hasGyroscope) "Presente (VR 3DoF Ativo)" else "Ausente"}
             Acelerômetro: ${if (report.hasAccelerometer) "Presente" else "Ausente"}
-            Câmera: ${if (report.hasCamera) "Pronta" else "Ausente"}
             Modo Atual: ${vrSession.performanceManager.currentLevel.name} (${vrSession.performanceManager.targetFps} FPS)
         """.trimIndent()
     }

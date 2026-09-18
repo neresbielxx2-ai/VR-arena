@@ -28,13 +28,19 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     var invertPitch: Boolean = false
     var invertYaw: Boolean = false
 
+    // Raw sensor matrix (portrait space)
     private val rawRotationMatrix = FloatArray(16)
-    private val landscapeRotationMatrix = FloatArray(16)
-    private val initialRotationMatrix = FloatArray(16)
-    private val finalHeadViewMatrix = FloatArray(16)
-    private var hasCalibratedBaseline = false
+    // Landscape remap (X -> Y, Y -> -X)
+    private val landscapeMatrix = FloatArray(16)
+    // Calibration zero baseline
+    private val baselineMatrix = FloatArray(16)
+    // Relative rotation in world
+    private val relativeRotation = FloatArray(16)
+    // Final camera view matrix
+    private val viewMatrix = FloatArray(16)
+    private var isCalibrated = false
 
-    // Fallback variables
+    // Fallbacks
     private val gravity = FloatArray(3)
     private val geomagnetic = FloatArray(3)
     private var hasGravity = false
@@ -42,9 +48,10 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     init {
         Matrix.setIdentityM(rawRotationMatrix, 0)
-        Matrix.setIdentityM(landscapeRotationMatrix, 0)
-        Matrix.setIdentityM(initialRotationMatrix, 0)
-        Matrix.setIdentityM(finalHeadViewMatrix, 0)
+        Matrix.setIdentityM(landscapeMatrix, 0)
+        Matrix.setIdentityM(baselineMatrix, 0)
+        Matrix.setIdentityM(relativeRotation, 0)
+        Matrix.setIdentityM(viewMatrix, 0)
     }
 
     fun start() {
@@ -53,36 +60,36 @@ class HeadTracking(private val context: Context) : SensorEventListener {
             return
         }
 
-        val rotVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        val gameRotSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
-        val gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-        val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val gameRot = sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+        val rotVec = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val gyro = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         when {
-            gameRotSensor != null -> {
-                sensorManager.registerListener(this, gameRotSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            gameRot != null -> {
+                sensorManager.registerListener(this, gameRot, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.GAME_ROTATION_VECTOR
-                sensorStatusMessage = "3DoF: Giroscópio + Acelerômetro (Estável)"
+                sensorStatusMessage = "3DoF: Giroscópio VR Ativo"
             }
-            rotVectorSensor != null -> {
-                sensorManager.registerListener(this, rotVectorSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            rotVec != null -> {
+                sensorManager.registerListener(this, rotVec, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ROTATION_VECTOR
                 sensorStatusMessage = "3DoF: Sensor Rotação Absoluto"
             }
-            gyroSensor != null && accelSensor != null -> {
-                sensorManager.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_FASTEST)
-                sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            gyro != null && accel != null -> {
+                sensorManager.registerListener(this, gyro, SensorManager.SENSOR_DELAY_FASTEST)
+                sensorManager.registerListener(this, accel, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ACCEL_GYRO_FUSION
                 sensorStatusMessage = "3DoF: Fusão Giro + Acelerômetro"
             }
-            accelSensor != null -> {
-                sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            accel != null -> {
+                sensorManager.registerListener(this, accel, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ACCELEROMETER_ONLY
                 sensorStatusMessage = "3DoF: Acelerômetro"
             }
             else -> {
                 activeSensorType = TrackingSensorType.NONE
-                sensorStatusMessage = "Nenhum sensor de orientação encontrado"
+                sensorStatusMessage = "Sensores de rotação indisponíveis"
             }
         }
         Log.d("LunarVR", "HeadTracking started: $sensorStatusMessage")
@@ -94,8 +101,8 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun recenter() {
         synchronized(this) {
-            System.arraycopy(landscapeRotationMatrix, 0, initialRotationMatrix, 0, 16)
-            hasCalibratedBaseline = true
+            System.arraycopy(landscapeMatrix, 0, baselineMatrix, 0, 16)
+            isCalibrated = true
         }
         Log.d("LunarVR", "HeadTracking recentered")
     }
@@ -103,8 +110,8 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         synchronized(this) {
             when (event.sensor.type) {
-                Sensor.TYPE_ROTATION_VECTOR,
-                Sensor.TYPE_GAME_ROTATION_VECTOR -> {
+                Sensor.TYPE_GAME_ROTATION_VECTOR,
+                Sensor.TYPE_ROTATION_VECTOR -> {
                     SensorManager.getRotationMatrixFromVector(rawRotationMatrix, event.values)
                 }
                 Sensor.TYPE_ACCELEROMETER -> {
@@ -124,18 +131,17 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                 }
             }
 
-            // Remap for landscape orientation (phone held horizontally in headset)
-            // Portrait X -> Landscape -Y, Portrait Y -> Landscape X
+            // Remap coordinate system for landscape orientation (Landscape standard: X->Y, Y->-X)
             SensorManager.remapCoordinateSystem(
                 rawRotationMatrix,
                 SensorManager.AXIS_Y,
                 SensorManager.AXIS_MINUS_X,
-                landscapeRotationMatrix
+                landscapeMatrix
             )
 
-            if (!hasCalibratedBaseline) {
-                System.arraycopy(landscapeRotationMatrix, 0, initialRotationMatrix, 0, 16)
-                hasCalibratedBaseline = true
+            if (!isCalibrated) {
+                System.arraycopy(landscapeMatrix, 0, baselineMatrix, 0, 16)
+                isCalibrated = true
             }
         }
     }
@@ -144,23 +150,22 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun getHeadMatrix(outputMatrix: FloatArray) {
         synchronized(this) {
-            // Compute relative device orientation matrix R_rel = (R_init)^T * R_current
-            val initTransposed = FloatArray(16)
-            Matrix.transposeM(initTransposed, 0, initialRotationMatrix, 0)
+            // R_rel = (R_baseline)^T * R_current
+            val baseTransposed = FloatArray(16)
+            Matrix.transposeM(baseTransposed, 0, baselineMatrix, 0)
 
-            val relativeOrientation = FloatArray(16)
-            Matrix.multiplyMM(relativeOrientation, 0, initTransposed, 0, landscapeRotationMatrix, 0)
+            Matrix.multiplyMM(relativeRotation, 0, baseTransposed, 0, landscapeMatrix, 0)
 
-            // View Matrix is the inverse (transpose) of the camera's orientation in world space
-            Matrix.transposeM(finalHeadViewMatrix, 0, relativeOrientation, 0)
+            // Convert World-to-Camera: ViewMatrix = Transpose(R_rel)
+            Matrix.transposeM(viewMatrix, 0, relativeRotation, 0)
 
             if (invertPitch || invertYaw) {
                 val scaleX = if (invertYaw) -1.0f else 1.0f
                 val scaleY = if (invertPitch) -1.0f else 1.0f
-                Matrix.scaleM(finalHeadViewMatrix, 0, scaleX, scaleY, 1.0f)
+                Matrix.scaleM(viewMatrix, 0, scaleX, scaleY, 1.0f)
             }
 
-            System.arraycopy(finalHeadViewMatrix, 0, outputMatrix, 0, 16)
+            System.arraycopy(viewMatrix, 0, outputMatrix, 0, 16)
         }
     }
 }

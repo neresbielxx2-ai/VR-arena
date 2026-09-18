@@ -29,11 +29,13 @@ class LunarBar(
     fun setupBarButtons() {
         buttons.clear()
 
-        // Bar is comfortably centered at eye level / slight lower tilt: y = -0.15f, z = -1.4f
-        val zPos = -1.4f
-        val yPos = -0.15f
+        // Bar is placed comfortably in front, just slightly below eye horizon:
+        // Eye horizon is y = 0.0f. The bar is at y = -0.25f (slight lower tilt, NOT on the ground).
+        // Distance z = -1.35f
+        val zPos = -1.35f
+        val yPos = -0.25f
         val btnW = 0.25f
-        val btnH = 0.15f
+        val btnH = 0.13f
 
         buttons.add(
             AppButton("btn_home", "✦ Início", -0.42f, yPos, zPos, btnW, btnH) {
