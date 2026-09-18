@@ -33,19 +33,9 @@ jobs:
         with:
           gradle-version: '8.4'
 
-      - name: Test Unit & Echo Error
-        id: unittest
-        continue-on-error: true
+      - name: Build Debug APK with error output
         run: |
-          gradle test --no-daemon --stacktrace > gradle_error.txt 2>&1
-
-      - name: Inspect Test Failure Output
-        if: steps.unittest.outcome == 'failure'
-        run: |
-          tail -n 80 gradle_error.txt
-
-      - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+          gradle assembleDebug --no-daemon --stacktrace || (echo "=== GRADLE FAILURE ==="; exit 1)
 
       - name: Build Release APK
         run: gradle assembleRelease --no-daemon --stacktrace || true
