@@ -34,26 +34,24 @@ jobs:
           gradle-version: '8.4'
           cache-disabled: true
 
-      - name: Run Build and Save Log
-        id: build_step
-        continue-on-error: true
-        run: |
-          gradle assembleDebug --no-daemon --stacktrace > full_build.log 2>&1
+      - name: Run Unit Tests
+        run: gradle test --no-daemon --stacktrace
 
-      - name: Extract Error to Annotation
-        run: |
-          grep -B 2 -A 8 "FAILURE: Build failed with an exception." full_build.log > extracted_error.txt || tail -n 25 full_build.log > extracted_error.txt
-          while IFS= read -r line; do
-            echo "::error title=GradleException::$line"
-          done < extracted_error.txt
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Fail if build step failed
-        if: steps.build_step.outcome == 'failure'
-        run: exit 1
+      - name: Build Release APK (Unsigned)
+        run: gradle assembleRelease --no-daemon --stacktrace || true
+
+      - name: Copy & Prepare APK Artifacts
+        run: |
+          mkdir -p output-apks
+          find app/build/outputs/apk -name "*.apk" -exec cp {} output-apks/ \;
+          ls -la output-apks/
 
       - name: Upload LunarVR APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: LunarVR-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: output-apks/*.apk
           retention-days: 14
