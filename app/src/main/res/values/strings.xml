@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Lunar VR</string>
+    <string name="lunar_tagline">Seu espaço virtual.</string>
+    <string name="start_vr">INICIAR VR</string>
+    <string name="recenter">Centralizar visão</string>
+    <string name="browser_title">Navegador Lunar</string>
+    <string name="settings_title">Configurações Lunar VR</string>
+</resources>

@@ -1,0 +1,16 @@
+<resources>
+    <style name="Theme.LunarVR" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/lunar_accent</item>
+        <item name="colorPrimaryVariant">@color/lunar_glow_blue</item>
+        <item name="colorOnPrimary">@color/lunar_space_black</item>
+        <item name="android:windowBackground">@color/lunar_space_black</item>
+        <item name="android:statusBarColor">@color/lunar_space_black</item>
+        <item name="android:navigationBarColor">@color/lunar_space_black</item>
+    </style>
+
+    <style name="Theme.LunarVR.Fullscreen" parent="Theme.LunarVR">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:keepScreenOn">true</item>
+    </style>
+</resources>
