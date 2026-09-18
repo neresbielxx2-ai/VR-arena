@@ -11,15 +11,16 @@ import android.util.Log
 import com.lunarvr.browser.BrowserController
 import com.lunarvr.browser.BrowserView
 import com.lunarvr.browser.URLBar
-import com.lunarvr.handtracking.InteractableElement
 import com.lunarvr.handtracking.InteractionManager
 import com.lunarvr.handtracking.Ray3D
 import com.lunarvr.keyboard.TextInputManager
 import com.lunarvr.keyboard.VRKey
 import com.lunarvr.keyboard.VRKeyboard
 import com.lunarvr.keyboard.VRKeyboardListener
+import com.lunarvr.ui.GrabHandle
 import com.lunarvr.ui.LunarBar
 import com.lunarvr.ui.LunarNavDestination
+import com.lunarvr.ui.ModernIcons
 import com.lunarvr.ui.SettingsPanel
 import com.lunarvr.ui.VRPanel
 import java.nio.ByteBuffer
@@ -68,6 +69,10 @@ class VRRenderer(
     private var settingsVRPanel: VRPanel? = null
     private var keyboardVRPanel: VRPanel? = null
 
+    // App Window Drag Handles: independent move handle under EACH open app window!
+    private var browserGrabHandle = GrabHandle("grab_browser", 0.0f, -0.32f, -1.35f, 0.40f, 0.06f)
+    private var settingsGrabHandle = GrabHandle("grab_settings", 0.0f, -0.38f, -1.30f, 0.40f, 0.06f)
+
     // Starfield background
     private var starCount = 350
     private var starBuffer: FloatBuffer? = null
@@ -83,7 +88,7 @@ class VRRenderer(
     private var screenWidth = 1920
     private var screenHeight = 1080
 
-    // Navigation State
+    // Navigation State (single active window visible at a time to prevent overlap!)
     private var currentDestination = LunarNavDestination.HOME
 
     private val headViewMatrix = FloatArray(16)
@@ -92,6 +97,10 @@ class VRRenderer(
     // Center Crosshair / Gaze Reticle
     private var reticleProgram = 0
     private var reticleBuffer: FloatBuffer? = null
+
+    // Self-healing notification toast in VR
+    private var notificationMessage: String? = null
+    private var notificationEndTime: Long = 0
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
@@ -106,6 +115,40 @@ class VRRenderer(
             initPanels()
 
             browserView = BrowserView(context, browserController)
+
+            // Setup Grab Handlers to dynamically reposition panels
+            lunarBar.grabHandle.onDragUpdate = { newX, newY ->
+                lunarBar.updatePosition(newX, newY)
+                barPanel?.let {
+                    it.x = newX
+                    it.y = newY
+                }
+            }
+
+            browserGrabHandle.onDragUpdate = { newX, newY ->
+                browserGrabHandle.x = newX
+                browserGrabHandle.y = newY
+                // Reposition both URL bar and Browser view together
+                urlPanel?.let {
+                    it.x = newX
+                    it.y = newY + 0.72f
+                }
+                browserPanel?.let {
+                    it.x = newX
+                    it.y = newY + 0.35f
+                }
+                urlBar.setupButtons(newX, newY + 0.72f)
+            }
+
+            settingsGrabHandle.onDragUpdate = { newX, newY ->
+                settingsGrabHandle.x = newX
+                settingsGrabHandle.y = newY
+                settingsVRPanel?.let {
+                    it.x = newX
+                    it.y = newY + 0.44f
+                }
+                settingsPanel.setupButtons(newX, newY + 0.44f)
+            }
 
             vrKeyboard.listener = object : VRKeyboardListener {
                 override fun onKeyPressed(character: String) {
@@ -129,6 +172,7 @@ class VRRenderer(
             refreshInteractiveElements()
         } catch (e: Throwable) {
             Log.e("LunarVR", "Error in onSurfaceCreated", e)
+            showNotification("Recuperando subsistema gráfico...")
         }
     }
 
@@ -137,16 +181,27 @@ class VRRenderer(
         screenHeight = if (height > 0) height else 1080
     }
 
+    fun showNotification(msg: String) {
+        notificationMessage = msg
+        notificationEndTime = System.currentTimeMillis() + 3000L
+    }
+
     override fun onDrawFrame(gl: GL10?) {
         try {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
+            // Health monitor & auto error recovery
+            val healthError = vrSession.headTracking.checkSensorHealth()
+            if (healthError != null) {
+                showNotification(healthError)
+            }
+
             // Read sensor orientation (View Matrix)
             vrSession.headTracking.getHeadMatrix(headViewMatrix)
 
-            // Pure Gaze Ray in World Space:
+            // Gaze Ray in World Space:
             // The camera position is at world (0,0,0).
-            // Camera's forward vector in world coordinates is row 2 of View Matrix negated:
+            // Camera forward vector in world coordinates is row 2 of View Matrix negated:
             val fwdX = -headViewMatrix[2]
             val fwdY = -headViewMatrix[6]
             val fwdZ = -headViewMatrix[10]
@@ -154,14 +209,28 @@ class VRRenderer(
 
             interactionManager.update(gazeRay)
 
+            // Calculate look target on panel plane (Z = -1.35f)
+            val lookPlaneZ = -1.35f
+            if (fwdZ != 0f) {
+                val t = lookPlaneZ / fwdZ
+                val gazePlaneX = t * fwdX
+                val gazePlaneY = t * fwdY
+
+                // Update any active grab handles:
+                // If looked at for 2 seconds, grab handle tracks gaze, then automatically unlocks
+                lunarBar.grabHandle.updateGrab(gazePlaneX, gazePlaneY + 0.15f)
+                browserGrabHandle.updateGrab(gazePlaneX, gazePlaneY)
+                settingsGrabHandle.updateGrab(gazePlaneX, gazePlaneY)
+            }
+
             // Update dynamic UI textures
             updateBarPanel()
             if (currentDestination == LunarNavDestination.BROWSER) {
                 updateBrowserPanels()
-            }
-            if (settingsPanel.isVisible) {
+            } else if (currentDestination == LunarNavDestination.SETTINGS) {
                 updateSettingsPanel()
             }
+
             if (vrKeyboard.isVisible) {
                 updateKeyboardPanel()
             }
@@ -189,6 +258,7 @@ class VRRenderer(
             renderScene(viewProjectionMatrix, vrSession.stereoCamera.getProjectionMatrix())
         } catch (e: Throwable) {
             Log.e("LunarVR", "Error in onDrawFrame", e)
+            showNotification("Auto-recuperação do renderizador...")
         }
     }
 
@@ -201,21 +271,18 @@ class VRRenderer(
         // Draw Panels in World space
         GLES20.glUseProgram(panelProgram)
 
-        // Floating Lunar Bar
+        // Floating Lunar Bar (always in front)
         barPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
 
-        // Browser Panel
+        // Only ONE app window open at a time to prevent any overlap!
         if (currentDestination == LunarNavDestination.BROWSER) {
             urlPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
             browserPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
-        }
-
-        // Settings Panel
-        if (settingsPanel.isVisible) {
+        } else if (currentDestination == LunarNavDestination.SETTINGS) {
             settingsVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
 
-        // Keyboard Panel
+        // Virtual Keyboard
         if (vrKeyboard.isVisible) {
             keyboardVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
@@ -242,8 +309,14 @@ class VRRenderer(
         Matrix.multiplyMM(mvpMatrix, 0, projMatrix, 0, model, 0)
 
         GLES20.glUniformMatrix4fv(mvp, 1, false, mvpMatrix, 0)
-        // High-visibility lunar cyan
-        GLES20.glUniform4f(color, 0.0f, 0.95f, 1.0f, 0.9f)
+
+        // Reticle glows high-visibility lunar cyan
+        val isHovering = interactionManager.currentProgress > 0f || lunarBar.grabHandle.isGrabbed
+        if (isHovering) {
+            GLES20.glUniform4f(color, 0.0f, 1.0f, 0.85f, 1.0f)
+        } else {
+            GLES20.glUniform4f(color, 0.0f, 0.90f, 1.0f, 0.8f)
+        }
 
         rBuf.position(0)
         GLES20.glEnableVertexAttribArray(pos)
@@ -256,7 +329,7 @@ class VRRenderer(
 
     private fun initReticle() {
         val segments = 24
-        val radius = 0.018f
+        val radius = 0.016f
         val coords = FloatArray(segments * 3)
         for (i in 0 until segments) {
             val angle = 2.0 * Math.PI * i / segments
@@ -311,19 +384,16 @@ class VRRenderer(
     }
 
     private fun handleNavigation(dest: LunarNavDestination) {
-        currentDestination = dest
-        when (dest) {
-            LunarNavDestination.HOME -> {
-                settingsPanel.isVisible = false
-                vrKeyboard.isVisible = false
-            }
-            LunarNavDestination.BROWSER -> {
-                settingsPanel.isVisible = false
-            }
-            LunarNavDestination.SETTINGS -> {
-                settingsPanel.isVisible = !settingsPanel.isVisible
-                vrKeyboard.isVisible = false
-            }
+        if (currentDestination == dest && dest != LunarNavDestination.HOME) {
+            // Toggle off if already opened
+            currentDestination = LunarNavDestination.HOME
+        } else {
+            currentDestination = dest
+        }
+
+        settingsPanel.isVisible = (currentDestination == LunarNavDestination.SETTINGS)
+        if (currentDestination != LunarNavDestination.BROWSER) {
+            vrKeyboard.isVisible = false
         }
         refreshInteractiveElements()
     }
@@ -333,7 +403,7 @@ class VRRenderer(
         textInputManager.bindTarget(object : TextInputManager.TextInputTarget {
             override fun onTextUpdated(text: String) {
                 urlBar.displayUrl = text
-                urlBar.setupButtons()
+                urlBar.setupButtons(urlPanel?.x ?: 0f, urlPanel?.y ?: 0.45f)
             }
 
             override fun onInputSubmitted(text: String) {
@@ -350,23 +420,26 @@ class VRRenderer(
     private fun refreshInteractiveElements() {
         interactionManager.clear()
 
-        // Always register Lunar Bar
+        // Always register Lunar Bar buttons and its grab handle
         for (btn in lunarBar.buttons) {
             interactionManager.register(btn)
         }
+        interactionManager.register(lunarBar.grabHandle)
 
-        // Register Browser buttons
+        // Register Browser buttons and drag handle if Browser is open
         if (currentDestination == LunarNavDestination.BROWSER) {
             for (btn in urlBar.buttons) {
                 interactionManager.register(btn)
             }
+            interactionManager.register(browserGrabHandle)
         }
 
-        // Register Settings buttons
-        if (settingsPanel.isVisible) {
+        // Register Settings buttons and drag handle if Settings is open
+        if (currentDestination == LunarNavDestination.SETTINGS) {
             for (btn in settingsPanel.buttons) {
                 interactionManager.register(btn)
             }
+            interactionManager.register(settingsGrabHandle)
         }
 
         // Register Keyboard buttons
@@ -380,8 +453,8 @@ class VRRenderer(
     private fun setupKeyboardButtons() {
         keyboardButtons.clear()
         val rows = vrKeyboard.getCurrentRows()
-        val startY = 0.05f
-        val zPos = -1.30f
+        val startY = -0.05f
+        val zPos = -1.25f
         val btnH = 0.07f
 
         for (r in rows.indices) {
@@ -411,59 +484,84 @@ class VRRenderer(
         barPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Outer Lunar Pill Glow & Border
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 4f
-            paint.color = Color.parseColor("#4DEEEA")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 246f), 50f, 50f, paint)
-
-            // Dark translucent capsule fill
+            // Sleek translucent glass capsule
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#E60D121F")
-            canvas.drawRoundRect(RectF(14f, 14f, 1010f, 242f), 48f, 48f, paint)
+            paint.color = Color.parseColor("#EE0B0F19")
+            canvas.drawRoundRect(RectF(14f, 14f, 1010f, 206f), 38f, 38f, paint)
 
-            // Header status info: Clock, Battery, 3DoF
-            paint.textSize = 28f
+            // Crisp Lunar Cyan Border
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f
+            paint.color = Color.parseColor("#22D3EE")
+            canvas.drawRoundRect(RectF(14f, 14f, 1010f, 206f), 38f, 38f, paint)
+
+            // Header status line
+            paint.style = Paint.Style.FILL
+            paint.textSize = 24f
             paint.color = Color.parseColor("#94A3B8")
-            canvas.drawText("LUNAR VR  |  ${lunarBar.vrStatus}", 40f, 55f, paint)
-            canvas.drawText("${lunarBar.currentTimeString}   🔋 ${lunarBar.batteryPercentage}%", 760f, 55f, paint)
+            val statusTxt = if (notificationMessage != null && System.currentTimeMillis() < notificationEndTime) {
+                "⚡ ${notificationMessage}"
+            } else {
+                "LUNAR VR  |  ${lunarBar.vrStatus}"
+            }
+            canvas.drawText(statusTxt, 36f, 46f, paint)
+            canvas.drawText("${lunarBar.currentTimeString}   🔋 ${lunarBar.batteryPercentage}%", 820f, 46f, paint)
 
-            // Draw Buttons
+            // Buttons: 4 actions with custom vector icons
+            val btnW = 226f
+            val btnH = 120f
+            val by = 68f
+
             for (i in lunarBar.buttons.indices) {
                 val btn = lunarBar.buttons[i]
-                val bx = 30f + i * 242f
-                val by = 85f
-                val bw = 225f
-                val bh = 140f
+                val bx = 28f + i * 242f
 
                 // Button back fill
                 paint.style = Paint.Style.FILL
                 if (btn.isHovered) {
-                    paint.color = Color.parseColor("#2A3B5C")
+                    paint.color = Color.parseColor("#1E2D4A")
                 } else {
-                    paint.color = Color.parseColor("#16233B")
+                    paint.color = Color.parseColor("#121929")
                 }
-                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
+                canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), 20f, 20f, paint)
 
-                // Button Border & Dwell Progress Bar
+                // Button Border
                 paint.style = Paint.Style.STROKE
-                paint.strokeWidth = if (btn.isHovered) 5f else 2f
-                paint.color = if (btn.isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#2A3B5C")
-                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
+                paint.strokeWidth = if (btn.isHovered) 4f else 2f
+                paint.color = if (btn.isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#1E2E48")
+                canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), 20f, 20f, paint)
 
+                // Dwell Progress bar on hover
                 if (btn.isHovered && btn.hoverProgress > 0f) {
                     paint.color = Color.parseColor("#00E5FF")
-                    paint.strokeWidth = 10f
-                    val progressW = (bw - 24f) * btn.hoverProgress
-                    canvas.drawLine(bx + 12f, by + bh - 12f, bx + 12f + progressW, by + bh - 12f, paint)
+                    paint.strokeWidth = 8f
+                    val progressW = (btnW - 24f) * btn.hoverProgress
+                    canvas.drawLine(bx + 12f, by + btnH - 8f, bx + 12f + progressW, by + btnH - 8f, paint)
                 }
 
-                // Text
+                // Custom vector icons (Clean, un-generic, no emojis)
+                val iconCx = bx + btnW / 2f
+                val iconCy = by + 45f
+                val iconColor = if (btn.isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#E2E8F0")
+
+                when (i) {
+                    0 -> ModernIcons.drawHomeIcon(canvas, paint, iconCx, iconCy, 36f, iconColor)
+                    1 -> ModernIcons.drawGlobeIcon(canvas, paint, iconCx, iconCy, 36f, iconColor)
+                    2 -> ModernIcons.drawRecenterIcon(canvas, paint, iconCx, iconCy, 36f, iconColor)
+                    3 -> ModernIcons.drawSettingsIcon(canvas, paint, iconCx, iconCy, 36f, iconColor)
+                }
+
+                // Button Label
                 paint.style = Paint.Style.FILL
-                paint.textSize = 32f
+                paint.textSize = 24f
                 paint.color = Color.parseColor("#F8FAFC")
-                canvas.drawText(btn.label, bx + 24f, by + 80f, paint)
+                val textW = paint.measureText(btn.label)
+                canvas.drawText(btn.label, bx + (btnW - textW) / 2f, by + 100f, paint)
             }
+
+            // Bottom Drag Handle Bar: Look at it for 2 seconds to grab and reposition!
+            val grab = lunarBar.grabHandle
+            ModernIcons.drawDragHandle(canvas, paint, 512f, 230f, 280f, 22f, grab.isGrabbed)
         }
     }
 
@@ -485,8 +583,8 @@ class VRRenderer(
             paint.textSize = 34f
             paint.color = Color.parseColor("#E2E8F0")
 
-            // Navigation icons
-            canvas.drawText("◀   ▶   ↻   🏠", 40f, 75f, paint)
+            // Modern icons text
+            canvas.drawText("◀   ▶   ↻   ✦", 40f, 75f, paint)
 
             // Address bar field
             paint.color = Color.parseColor("#1A2238")
@@ -512,21 +610,23 @@ class VRRenderer(
             // Background panel
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#F50A0E1A")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 758f), 35f, 35f, paint)
+            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 720f), 35f, 35f, paint)
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 4f
             paint.color = Color.parseColor("#3A86FF")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 758f), 35f, 35f, paint)
+            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 720f), 35f, 35f, paint)
 
-            // Title
+            // Title with modern vector icon
+            ModernIcons.drawSettingsIcon(canvas, paint, 60f, 65f, 34f, Color.parseColor("#00E5FF"))
+
             paint.style = Paint.Style.FILL
-            paint.textSize = 40f
+            paint.textSize = 34f
             paint.color = Color.parseColor("#00E5FF")
-            canvas.drawText("⚙  CONFIGURAÇÕES LUNAR VR", 50f, 75f, paint)
+            canvas.drawText("AJUSTES LUNAR VR", 100f, 75f, paint)
 
             // System info
-            paint.textSize = 26f
+            paint.textSize = 25f
             paint.color = Color.parseColor("#94A3B8")
             val report = vrSession.hardwareReport
             val infoLines = settingsPanel.getSystemInfoText(report).lines()
@@ -542,7 +642,7 @@ class VRRenderer(
                 val col = i % 2
                 val row = i / 2
                 val bx = 50f + col * 480f
-                val by = 430f + row * 80f
+                val by = 420f + row * 80f
                 val bw = 440f
                 val bh = 65f
 
@@ -562,10 +662,13 @@ class VRRenderer(
                 }
 
                 paint.style = Paint.Style.FILL
-                paint.textSize = 28f
+                paint.textSize = 26f
                 paint.color = Color.parseColor("#F8FAFC")
                 canvas.drawText(btn.label, bx + 25f, by + 44f, paint)
             }
+
+            // Drag handle at the bottom of settings panel
+            ModernIcons.drawDragHandle(canvas, paint, 512f, 744f, 260f, 20f, settingsGrabHandle.isGrabbed)
         }
     }
 
@@ -621,15 +724,15 @@ class VRRenderer(
     }
 
     private fun initPanels() {
-        // Lunar Bar: right in front, slightly below center (y = -0.22f, z = -1.35f, comfortable natural eye rest)
-        barPanel = VRPanel("lunar_bar", 0.0f, -0.22f, -1.35f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
+        // Lunar Bar: right in front, comfortable natural eye rest (y = -0.26f, z = -1.35f)
+        barPanel = VRPanel("lunar_bar", 0.0f, -0.26f, -1.35f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
 
         // Browser & URL Panels: centered right in front of user
         urlPanel = VRPanel("url_panel", 0.0f, 0.45f, -1.35f, 1.15f, 0.14f, 1024, 128).also { it.initGL() }
-        browserPanel = VRPanel("browser_panel", 0.0f, 0.05f, -1.35f, 1.15f, 0.65f, 1024, 768).also { it.initGL() }
+        browserPanel = VRPanel("browser_panel", 0.0f, 0.08f, -1.35f, 1.15f, 0.65f, 1024, 768).also { it.initGL() }
 
         // Settings Panel
-        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.08f, -1.30f, 1.10f, 0.82f, 1024, 768).also { it.initGL() }
+        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.10f, -1.30f, 1.10f, 0.82f, 1024, 768).also { it.initGL() }
 
         // Virtual 3D Keyboard
         keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.05f, -1.25f, 1.10f, 0.52f, 1024, 512).also { it.initGL() }

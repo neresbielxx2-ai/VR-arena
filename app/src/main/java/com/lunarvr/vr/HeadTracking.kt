@@ -33,19 +33,29 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     // Landscape remap
     private val landscapeMatrix = FloatArray(16)
 
-    // Center offset yaw calibration
+    // Center offset calibration: zero both yaw AND pitch on startup/recenter!
+    // This guarantees the camera starts looking dead-center forward at 0° eye-level horizon!
     private var yawOffsetDeg = 0.0f
+    private var pitchOffsetDeg = 0.0f
     private val orientationVals = FloatArray(3)
 
     // Camera view matrix
     private val cameraViewMatrix = FloatArray(16)
     private var isCalibrated = false
+    private var initialFramesCountdown = 5 // Wait 5 sensor events for stable readings before initial zeroing
 
     // Sensor Fallbacks
     private val gravity = FloatArray(3)
     private val geomagnetic = FloatArray(3)
     private var hasGravity = false
     private var hasGeomagnetic = false
+
+    // Self-healing / Error recovery
+    var trackingErrorDetected = false
+        private set
+    var recoveryMessage: String? = null
+        private set
+    private var lastValidEventTime = System.currentTimeMillis()
 
     init {
         Matrix.setIdentityM(rawRotationMatrix, 0)
@@ -101,15 +111,21 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     fun recenter() {
         synchronized(this) {
             SensorManager.getOrientation(landscapeMatrix, orientationVals)
-            // Save current yaw in degrees as the new center forward
+            // Save both yaw and pitch so whenever you recenter (or start),
+            // your forward view is instantly leveled straight ahead without neck strain!
             yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
+            pitchOffsetDeg = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
             isCalibrated = true
+            recoveryMessage = "Visão centralizada e nivelada"
         }
-        Log.d("LunarVR", "HeadTracking recentered. Yaw offset: $yawOffsetDeg")
+        Log.d("LunarVR", "HeadTracking recentered. Yaw offset: $yawOffsetDeg, Pitch offset: $pitchOffsetDeg")
     }
 
     override fun onSensorChanged(event: SensorEvent) {
         synchronized(this) {
+            lastValidEventTime = System.currentTimeMillis()
+            trackingErrorDetected = false
+
             when (event.sensor.type) {
                 Sensor.TYPE_GAME_ROTATION_VECTOR,
                 Sensor.TYPE_ROTATION_VECTOR -> {
@@ -141,41 +157,70 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                 landscapeMatrix
             )
 
+            // Automatic clean initial calibration after first few frames of reading
             if (!isCalibrated) {
-                SensorManager.getOrientation(landscapeMatrix, orientationVals)
-                yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
-                isCalibrated = true
+                if (initialFramesCountdown > 0) {
+                    initialFramesCountdown--
+                } else {
+                    SensorManager.getOrientation(landscapeMatrix, orientationVals)
+                    yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
+                    pitchOffsetDeg = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
+                    isCalibrated = true
+                }
             }
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
+    fun checkSensorHealth(): String? {
+        val elapsed = System.currentTimeMillis() - lastValidEventTime
+        if (elapsed > 2000L && activeSensorType != TrackingSensorType.NONE) {
+            // Auto-heal: restart listener
+            stop()
+            start()
+            recenter()
+            return "Reconectando sensores VR..."
+        }
+        return null
+    }
+
     fun getHeadMatrix(outputMatrix: FloatArray) {
         synchronized(this) {
-            SensorManager.getOrientation(landscapeMatrix, orientationVals)
+            // Detect if orientation values are NaN or degenerate
+            try {
+                SensorManager.getOrientation(landscapeMatrix, orientationVals)
 
-            // Absolute angles in degrees:
-            // orientationVals[0]: Azimuth / Yaw (rotation around Z axis, pointing up)
-            // orientationVals[1]: Pitch (rotation around X axis, pointing right)
-            // orientationVals[2]: Roll (rotation around Y axis, pointing forward)
-            val currentYaw = Math.toDegrees(orientationVals[0].toDouble()).toFloat() - yawOffsetDeg
-            val currentPitch = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
-            val currentRoll = Math.toDegrees(orientationVals[2].toDouble()).toFloat()
+                val rawYaw = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
+                val rawPitch = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
+                val rawRoll = Math.toDegrees(orientationVals[2].toDouble()).toFloat()
 
-            val yawSign = if (invertYaw) -1.0f else 1.0f
-            val pitchSign = if (invertPitch) -1.0f else 1.0f
+                // If values are NaN, self-heal:
+                if (rawYaw.isNaN() || rawPitch.isNaN() || rawRoll.isNaN()) {
+                    Matrix.setIdentityM(outputMatrix, 0)
+                    return
+                }
 
-            // Clean Camera View Matrix:
-            // In OpenGL View space:
-            // Looking LEFT turns the camera view to the right (+Yaw)
-            // Looking UP tilts the camera view down (+Pitch)
-            Matrix.setIdentityM(cameraViewMatrix, 0)
-            Matrix.rotateM(cameraViewMatrix, 0, currentRoll, 0f, 0f, 1f)
-            Matrix.rotateM(cameraViewMatrix, 0, pitchSign * currentPitch, 1f, 0f, 0f)
-            Matrix.rotateM(cameraViewMatrix, 0, yawSign * currentYaw, 0f, 1f, 0f)
+                // Apply initial calibrated offsets:
+                // Looking straight ahead -> relative angles are zero!
+                val currentYaw = rawYaw - yawOffsetDeg
+                val currentPitch = rawPitch - pitchOffsetDeg
+                val currentRoll = rawRoll
 
-            System.arraycopy(cameraViewMatrix, 0, outputMatrix, 0, 16)
+                val yawSign = if (invertYaw) -1.0f else 1.0f
+                val pitchSign = if (invertPitch) -1.0f else 1.0f
+
+                // Clean Camera View Matrix:
+                Matrix.setIdentityM(cameraViewMatrix, 0)
+                Matrix.rotateM(cameraViewMatrix, 0, currentRoll, 0f, 0f, 1f)
+                Matrix.rotateM(cameraViewMatrix, 0, pitchSign * currentPitch, 1f, 0f, 0f)
+                Matrix.rotateM(cameraViewMatrix, 0, yawSign * currentYaw, 0f, 1f, 0f)
+
+                System.arraycopy(cameraViewMatrix, 0, outputMatrix, 0, 16)
+            } catch (e: Throwable) {
+                Log.e("LunarVR", "Error updating head matrix", e)
+                Matrix.setIdentityM(outputMatrix, 0)
+            }
         }
     }
 }
