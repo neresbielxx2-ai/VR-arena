@@ -17,12 +17,15 @@ class LunarBar(
     var currentTimeString: String = "12:00"
         private set
     var batteryPercentage: Int = 100
-    var wifiStatus: String = "Wi-Fi OK"
     var vrStatus: String = "3DoF Ativo"
 
-    // World position of the bar
+    // World position of the bar in spherical coordinates: yawDeg, height Y, distance Z
+    var yawDeg: Float = 0.0f
+    var posY: Float = -0.28f
+    var radiusZ: Float = 1.35f
+
+    // Cartesian coordinates
     var posX: Float = 0.0f
-    var posY: Float = -0.26f
     var posZ: Float = -1.35f
 
     // Interactive buttons and grab handle
@@ -39,7 +42,7 @@ class LunarBar(
         val btnW = 0.23f
         val btnH = 0.13f
 
-        // 4 sleek, modern actions
+        // 4 actions
         buttons.add(
             AppButton("btn_home", "Início", posX - 0.38f, posY, posZ, btnW, btnH) {
                 onNavigate(LunarNavDestination.HOME)
@@ -64,32 +67,44 @@ class LunarBar(
             }
         )
 
-        // Grab handle located right underneath the main bar
+        // Meta Quest style pill drag handle located right underneath the main bar
         grabHandle = GrabHandle(
             id = "grab_lunar_bar",
             x = posX,
             y = posY - 0.15f,
             z = posZ,
-            width = 0.40f,
+            width = 0.42f,
             height = 0.06f
         )
     }
 
-    fun updatePosition(newX: Float, newY: Float) {
-        posX = newX
-        posY = newY
-        // Update children button positions
-        buttons[0].x = posX - 0.38f
-        buttons[0].y = posY
-        buttons[1].x = posX - 0.13f
-        buttons[1].y = posY
-        buttons[2].x = posX + 0.13f
-        buttons[2].y = posY
-        buttons[3].x = posX + 0.38f
-        buttons[3].y = posY
+    fun setSphericalPosition(newYawDeg: Float, newHeightY: Float, newDist: Float = radiusZ) {
+        yawDeg = newYawDeg
+        posY = newHeightY
+        radiusZ = newDist
+
+        val rad = Math.toRadians(newYawDeg.toDouble())
+        posX = (newDist * Math.sin(rad)).toFloat()
+        posZ = (-newDist * Math.cos(rad)).toFloat()
+
+        // Update button world positions relative to tangent and normal vectors
+        val cosA = Math.cos(rad).toFloat()
+        val sinA = Math.sin(rad).toFloat()
+
+        fun setRelPos(btn: AppButton, offsetX: Float) {
+            btn.x = posX + offsetX * cosA
+            btn.y = posY
+            btn.z = posZ + offsetX * sinA
+        }
+
+        setRelPos(buttons[0], -0.38f)
+        setRelPos(buttons[1], -0.13f)
+        setRelPos(buttons[2], 0.13f)
+        setRelPos(buttons[3], 0.38f)
 
         grabHandle.x = posX
         grabHandle.y = posY - 0.15f
+        grabHandle.z = posZ
     }
 
     fun updateClock() {

@@ -20,9 +20,9 @@ data class BoundingBox3D(
     val maxZ: Float
 ) {
     fun intersects(ray: Ray3D): Boolean {
-        // Plane intersection at Z = (minZ + maxZ) / 2
+        // Spherical or cylindrical ray intersection around panel element
         val targetZ = (minZ + maxZ) / 2.0f
-        if (ray.dirZ == 0f) return false
+        if (Math.abs(ray.dirZ) < 0.0001f) return false
         val t = (targetZ - ray.originZ) / ray.dirZ
         if (t <= 0f) return false // Ray points backwards
 
@@ -38,7 +38,10 @@ class InteractionManager {
     private val interactables = mutableListOf<InteractableElement>()
     private var currentlyHovered: InteractableElement? = null
     private var hoverStartTime: Long = 0
-    private val dwellClickDurationMs: Long = 1000L // 1 second dwell time
+
+    // Standard buttons dwell 1.5s, while keyboard keys and grab handles dwell 2.0s as requested
+    var standardDwellTimeMs: Long = 1500L
+    var keyboardDwellTimeMs: Long = 2000L
 
     var lastHitElementId: String? = null
         private set
@@ -64,6 +67,14 @@ class InteractionManager {
         interactables.clear()
         currentlyHovered = null
         currentProgress = 0f
+    }
+
+    private fun getRequiredDwellTime(elem: InteractableElement): Long {
+        return if (elem.id.startsWith("key_") || elem.id.startsWith("grab_")) {
+            keyboardDwellTimeMs // Exactly 2 seconds for keyboard keys & grab handles
+        } else {
+            standardDwellTimeMs
+        }
     }
 
     fun update(ray: Ray3D?) {
@@ -93,16 +104,17 @@ class InteractionManager {
             hit?.onHoverEnter()
             lastHitElementId = hit?.id
         } else if (hit != null) {
+            val requiredDuration = getRequiredDwellTime(hit)
             val elapsed = now - hoverStartTime
-            val progress = (elapsed.toFloat() / dwellClickDurationMs).coerceIn(0f, 1f)
+            val progress = (elapsed.toFloat() / requiredDuration).coerceIn(0f, 1f)
             currentProgress = progress
             hit.onHoverProgress(progress)
 
-            if (elapsed >= dwellClickDurationMs) {
+            if (elapsed >= requiredDuration) {
                 // Execute click!
                 hit.onClick()
-                // Reset timer after click so it doesn't instantly click again
-                hoverStartTime = now + 500L
+                // Pause slightly after click so it doesn't instantly double trigger
+                hoverStartTime = now + 400L
                 currentProgress = 0f
             }
         }

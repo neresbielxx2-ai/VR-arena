@@ -24,19 +24,19 @@ class GrabHandle(
     private var grabStartTime: Long = 0
     private val grabDurationMs: Long = 2000L // 2 seconds lock duration
 
-    // Callback when user drags the bar
-    var onDragUpdate: ((Float, Float) -> Unit)? = null
+    // Callback when user drags the window in 3D spherical space (yaw angle in deg, height Y, distance Z)
+    var onDragUpdateSpherical: ((Float, Float, Float) -> Unit)? = null
 
     override fun getBoundingBox3D(): BoundingBox3D {
-        val padX = 0.05f
-        val padY = 0.04f
+        val padX = 0.08f
+        val padY = 0.05f
         return BoundingBox3D(
             minX = x - width / 2.0f - padX,
             maxX = x + width / 2.0f + padX,
             minY = y - height / 2.0f - padY,
             maxY = y + height / 2.0f + padY,
-            minZ = z - 0.2f,
-            maxZ = z + 0.2f
+            minZ = z - 0.25f,
+            maxZ = z + 0.25f
         )
     }
 
@@ -50,12 +50,14 @@ class GrabHandle(
     }
 
     override fun onHoverExit() {
-        isHovered = false
-        hoverProgress = 0f
+        if (!isGrabbed) {
+            isHovered = false
+            hoverProgress = 0f
+        }
     }
 
     override fun onClick() {
-        // Toggle grab mode when dwell timer triggers (or lock starts)
+        // Toggle grab mode when 2-second dwell timer triggers
         startGrab()
     }
 
@@ -64,18 +66,19 @@ class GrabHandle(
         grabStartTime = SystemClock.uptimeMillis()
     }
 
-    fun updateGrab(lookTargetX: Float, lookTargetY: Float) {
+    fun updateGrabSpherical(yawDeg: Float, heightY: Float, distanceZ: Float) {
         if (!isGrabbed) return
 
         val now = SystemClock.uptimeMillis()
         val elapsed = now - grabStartTime
 
         if (elapsed <= grabDurationMs) {
-            // Actively follow gaze target smoothly while locked
-            onDragUpdate?.invoke(lookTargetX, lookTargetY)
+            // Actively follow gaze target smoothly without invisible walls
+            onDragUpdateSpherical?.invoke(yawDeg, heightY, distanceZ)
         } else {
             // Automatically ungrab / release after exactly 2 seconds!
             isGrabbed = false
+            isHovered = false
             hoverProgress = 0f
         }
     }

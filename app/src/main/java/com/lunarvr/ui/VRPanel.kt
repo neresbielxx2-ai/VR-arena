@@ -19,7 +19,8 @@ class VRPanel(
     var width: Float,
     var height: Float,
     val pixelWidth: Int = 512,
-    val pixelHeight: Int = 256
+    val pixelHeight: Int = 256,
+    var rotationYDeg: Float = 0f
 ) {
     private var textureId: Int = 0
     private var surfaceBitmap: Bitmap = Bitmap.createBitmap(pixelWidth, pixelHeight, Bitmap.Config.ARGB_8888)
@@ -97,6 +98,9 @@ class VRPanel(
         val modelMatrix = FloatArray(16)
         Matrix.setIdentityM(modelMatrix, 0)
         Matrix.translateM(modelMatrix, 0, x, y, z)
+        if (rotationYDeg != 0f) {
+            Matrix.rotateM(modelMatrix, 0, rotationYDeg, 0f, 1f, 0f)
+        }
 
         val mvpMatrix = FloatArray(16)
         Matrix.multiplyMM(mvpMatrix, 0, vpMatrix, 0, modelMatrix, 0)
