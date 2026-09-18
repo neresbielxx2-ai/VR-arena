@@ -28,8 +28,14 @@ jobs:
           echo "ANDROID_HOME: $ANDROID_HOME"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+
       - name: Run Unit Tests
-        run: gradle test --no-daemon --stacktrace
+        run: |
+          gradle test --no-daemon --info || (cat app/build/reports/tests/testDebugUnitTest/index.html 2>/dev/null || true; exit 1)
 
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
