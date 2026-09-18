@@ -14,7 +14,6 @@ object ModernIcons {
         val oldStyle = paint.style
         val oldWidth = paint.strokeWidth
 
-        // Battery outer shell
         val bw = 38f
         val bh = 18f
         val rect = RectF(x, y - bh / 2f, x + bw, y + bh / 2f)
@@ -24,22 +23,19 @@ object ModernIcons {
         paint.color = Color.parseColor("#94A3B8")
         canvas.drawRoundRect(rect, 4f, 4f, paint)
 
-        // Battery positive terminal nub
         val nub = RectF(x + bw + 1f, y - bh * 0.22f, x + bw + 3.5f, y + bh * 0.22f)
         paint.style = Paint.Style.FILL
         canvas.drawRoundRect(nub, 1.5f, 1.5f, paint)
 
-        // Battery fill level
         val fillWidth = (bw - 6f) * (percent.coerceIn(0, 100) / 100f)
         val fillRect = RectF(x + 3f, y - bh / 2f + 3f, x + 3f + fillWidth, y + bh / 2f - 3f)
         paint.color = when {
-            percent > 30 -> Color.parseColor("#10B981") // Crisp neon green
-            percent > 15 -> Color.parseColor("#F59E0B") // Warning amber
-            else -> Color.parseColor("#EF4444") // Red
+            percent > 30 -> Color.parseColor("#10B981")
+            percent > 15 -> Color.parseColor("#F59E0B")
+            else -> Color.parseColor("#EF4444")
         }
         canvas.drawRoundRect(fillRect, 2f, 2f, paint)
 
-        // Percent text
         paint.textSize = 20f
         paint.color = Color.parseColor("#E2E8F0")
         canvas.drawText("$percent%", x + bw + 10f, y + 7f, paint)
@@ -49,7 +45,7 @@ object ModernIcons {
         paint.strokeWidth = oldWidth
     }
 
-    // Draw a crisp, vector Home / Início icon
+    // Home / Início icon
     fun drawHomeIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
         val oldColor = paint.color
         val oldStyle = paint.style
@@ -66,7 +62,6 @@ object ModernIcons {
         val roofBottomY = cy - 0.05f * size
         val wallBottomY = cy + half
 
-        // Roof and wall path
         val roof = Path().apply {
             moveTo(cx, roofPeakY)
             lineTo(cx - half * 0.95f, roofBottomY)
@@ -88,7 +83,7 @@ object ModernIcons {
         paint.strokeWidth = oldWidth
     }
 
-    // Draw a crisp, vector Globe / Browser icon
+    // Globe / Browser icon
     fun drawGlobeIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
         val oldColor = paint.color
         val oldStyle = paint.style
@@ -113,7 +108,42 @@ object ModernIcons {
         paint.strokeWidth = oldWidth
     }
 
-    // Draw a crisp Target / Recenter reticle icon
+    // Mountains / Landscape / Cenários icon
+    fun drawEnvironmentIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+
+        paint.color = color
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3.2f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+
+        val half = size / 2f
+
+        // Sun / Moon in sky
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(cx + half * 0.45f, cy - half * 0.45f, half * 0.25f, paint)
+
+        // Mountains path
+        paint.style = Paint.Style.STROKE
+        val path = Path().apply {
+            moveTo(cx - half * 0.95f, cy + half * 0.70f)
+            lineTo(cx - half * 0.30f, cy - half * 0.35f)
+            lineTo(cx + half * 0.20f, cy + half * 0.30f)
+            lineTo(cx + half * 0.55f, cy - half * 0.05f)
+            lineTo(cx + half * 0.95f, cy + half * 0.70f)
+            close()
+        }
+        canvas.drawPath(path, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+    }
+
+    // Target / Recenter icon
     fun drawRecenterIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
         val oldColor = paint.color
         val oldStyle = paint.style
@@ -142,7 +172,7 @@ object ModernIcons {
         paint.strokeWidth = oldWidth
     }
 
-    // Draw a crisp Cogwheel / Settings icon
+    // Cogwheel / Settings icon
     fun drawSettingsIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
         val oldColor = paint.color
         val oldStyle = paint.style
@@ -171,7 +201,7 @@ object ModernIcons {
         paint.strokeWidth = oldWidth
     }
 
-    // Meta Quest 3S inspired Drag Bar Handle (Pill capsule with hover glow & lock indication)
+    // Meta Quest 3S Drag Handle Pill
     fun drawDragHandle(canvas: Canvas, paint: Paint, cx: Float, cy: Float, width: Float, height: Float, isHovered: Boolean, isLocked: Boolean, progress: Float) {
         val oldColor = paint.color
         val oldStyle = paint.style
@@ -180,7 +210,6 @@ object ModernIcons {
         val halfH = height / 2f
         val rect = RectF(cx - halfW, cy - halfH, cx + halfW, cy + halfH)
 
-        // Pill handle background
         paint.style = Paint.Style.FILL
         paint.color = when {
             isLocked -> Color.parseColor("#00E5FF")
@@ -189,7 +218,6 @@ object ModernIcons {
         }
         canvas.drawRoundRect(rect, halfH, halfH, paint)
 
-        // Progress bar inside handle
         if (isHovered && progress > 0f && !isLocked) {
             val progW = (width - 8f) * progress
             val progRect = RectF(cx - halfW + 4f, cy - halfH + 3f, cx - halfW + 4f + progW, cy + halfH - 3f)
@@ -197,13 +225,11 @@ object ModernIcons {
             canvas.drawRoundRect(progRect, halfH - 3f, halfH - 3f, paint)
         }
 
-        // Pill border
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2f
         paint.color = if (isLocked) Color.parseColor("#FFFFFF") else Color.parseColor("#475569")
         canvas.drawRoundRect(rect, halfH, halfH, paint)
 
-        // 3 tactile dots
         paint.style = Paint.Style.FILL
         paint.color = if (isLocked) Color.parseColor("#0F172A") else Color.parseColor("#CBD5E1")
         val dotRadius = halfH * 0.35f

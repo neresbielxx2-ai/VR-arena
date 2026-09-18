@@ -7,7 +7,8 @@ import java.util.Locale
 enum class LunarNavDestination {
     HOME,
     BROWSER,
-    SETTINGS
+    SETTINGS,
+    ENVIRONMENTS
 }
 
 class LunarBar(
@@ -39,30 +40,36 @@ class LunarBar(
     fun setupBarButtons() {
         buttons.clear()
 
-        val btnW = 0.23f
+        val btnW = 0.18f
         val btnH = 0.13f
 
-        // 4 actions
+        // 5 sleek actions: Início, Navegador, Cenários, Centralizar, Ajustes
         buttons.add(
-            AppButton("btn_home", "Início", posX - 0.38f, posY, posZ, btnW, btnH) {
+            AppButton("btn_home", "Início", posX - 0.40f, posY, posZ, btnW, btnH) {
                 onNavigate(LunarNavDestination.HOME)
             }
         )
 
         buttons.add(
-            AppButton("btn_browser", "Navegador", posX - 0.13f, posY, posZ, btnW, btnH) {
+            AppButton("btn_browser", "Navegador", posX - 0.20f, posY, posZ, btnW, btnH) {
                 onNavigate(LunarNavDestination.BROWSER)
             }
         )
 
         buttons.add(
-            AppButton("btn_recenter", "Centralizar", posX + 0.13f, posY, posZ, btnW, btnH) {
+            AppButton("btn_environments", "Cenários", posX, posY, posZ, btnW, btnH) {
+                onNavigate(LunarNavDestination.ENVIRONMENTS)
+            }
+        )
+
+        buttons.add(
+            AppButton("btn_recenter", "Centralizar", posX + 0.20f, posY, posZ, btnW, btnH) {
                 onRecenter()
             }
         )
 
         buttons.add(
-            AppButton("btn_settings", "Ajustes", posX + 0.38f, posY, posZ, btnW, btnH) {
+            AppButton("btn_settings", "Ajustes", posX + 0.40f, posY, posZ, btnW, btnH) {
                 onNavigate(LunarNavDestination.SETTINGS)
             }
         )
@@ -97,10 +104,11 @@ class LunarBar(
             btn.z = posZ + offsetX * sinA
         }
 
-        setRelPos(buttons[0], -0.38f)
-        setRelPos(buttons[1], -0.13f)
-        setRelPos(buttons[2], 0.13f)
-        setRelPos(buttons[3], 0.38f)
+        setRelPos(buttons[0], -0.40f)
+        setRelPos(buttons[1], -0.20f)
+        setRelPos(buttons[2], 0.00f)
+        setRelPos(buttons[3], 0.20f)
+        setRelPos(buttons[4], 0.40f)
 
         grabHandle.x = posX
         grabHandle.y = posY - 0.15f

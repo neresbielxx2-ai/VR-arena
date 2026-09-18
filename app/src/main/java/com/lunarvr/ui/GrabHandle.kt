@@ -22,7 +22,8 @@ class GrabHandle(
     var isGrabbed: Boolean = false
         private set
     private var grabStartTime: Long = 0
-    private val grabDurationMs: Long = 2000L // 2 seconds lock duration
+    private val grabDurationMs: Long = 2000L // EXACTLY 2 seconds grab movement window
+    var cooldownUntilTime: Long = 0 // Cooldown so it doesn't immediately re-grab
 
     // Callback when user drags the window in 3D spherical space (yaw angle in deg, height Y, distance Z)
     var onDragUpdateSpherical: ((Float, Float, Float) -> Unit)? = null
@@ -41,11 +42,16 @@ class GrabHandle(
     }
 
     override fun onHoverEnter() {
+        if (SystemClock.uptimeMillis() < cooldownUntilTime) return
         isHovered = true
         hoverProgress = 0f
     }
 
     override fun onHoverProgress(progress: Float) {
+        if (SystemClock.uptimeMillis() < cooldownUntilTime) {
+            hoverProgress = 0f
+            return
+        }
         hoverProgress = progress
     }
 
@@ -57,7 +63,8 @@ class GrabHandle(
     }
 
     override fun onClick() {
-        // Toggle grab mode when 2-second dwell timer triggers
+        if (SystemClock.uptimeMillis() < cooldownUntilTime) return
+        // Dwell completed: Start grab!
         startGrab()
     }
 
@@ -73,13 +80,15 @@ class GrabHandle(
         val elapsed = now - grabStartTime
 
         if (elapsed <= grabDurationMs) {
-            // Actively follow gaze target smoothly without invisible walls
+            // Smoothly follow head gaze without any boundary walls
             onDragUpdateSpherical?.invoke(yawDeg, heightY, distanceZ)
         } else {
-            // Automatically ungrab / release after exactly 2 seconds!
+            // AUTOMATICALLY UNLOCK AND RELEASE after exactly 2 seconds!
             isGrabbed = false
             isHovered = false
             hoverProgress = 0f
+            // Enforce a 1.5-second cooldown to avoid instant re-lock
+            cooldownUntilTime = now + 1500L
         }
     }
 }
