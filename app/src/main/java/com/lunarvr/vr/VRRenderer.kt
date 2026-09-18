@@ -144,10 +144,9 @@ class VRRenderer(
             // Read sensor orientation (View Matrix)
             vrSession.headTracking.getHeadMatrix(headViewMatrix)
 
-            // Pure Gaze Ray: origin is camera center in world space (0,0,0).
-            // Forward direction vector in world space:
-            // Since V transforms world->camera, the camera's Z axis in world is the 3rd row of V:
-            // V[2], V[6], V[10]. Since camera looks down -Z, the gaze ray is (-V[2], -V[6], -V[10]).
+            // Pure Gaze Ray in World Space:
+            // The camera position is at world (0,0,0).
+            // Camera's forward vector in world coordinates is row 2 of View Matrix negated:
             val fwdX = -headViewMatrix[2]
             val fwdY = -headViewMatrix[6]
             val fwdZ = -headViewMatrix[10]
@@ -194,7 +193,7 @@ class VRRenderer(
     }
 
     private fun renderScene(vpMatrix: FloatArray, projMatrix: FloatArray) {
-        // Draw Starfield (World space)
+        // Draw Starfield in World space
         drawStarfield(vpMatrix)
 
         if (panelProgram == 0) return
@@ -622,8 +621,8 @@ class VRRenderer(
     }
 
     private fun initPanels() {
-        // Lunar Bar: right in front, slightly below center (y = -0.25f, z = -1.35f, comfortable natural eye rest)
-        barPanel = VRPanel("lunar_bar", 0.0f, -0.25f, -1.35f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
+        // Lunar Bar: right in front, slightly below center (y = -0.22f, z = -1.35f, comfortable natural eye rest)
+        barPanel = VRPanel("lunar_bar", 0.0f, -0.22f, -1.35f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
 
         // Browser & URL Panels: centered right in front of user
         urlPanel = VRPanel("url_panel", 0.0f, 0.45f, -1.35f, 1.15f, 0.14f, 1024, 128).also { it.initGL() }
