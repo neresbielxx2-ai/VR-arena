@@ -7,6 +7,7 @@ import android.graphics.RectF
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import android.util.Log
 import com.lunarvr.browser.BrowserController
 import com.lunarvr.browser.BrowserView
 import com.lunarvr.browser.URLBar
@@ -62,15 +63,15 @@ class VRRenderer(
     private val keyboardButtons = mutableListOf<VRKey>()
 
     // VR UI Panels
-    private lateinit var barPanel: VRPanel
-    private lateinit var browserPanel: VRPanel
-    private lateinit var urlPanel: VRPanel
-    private lateinit var settingsVRPanel: VRPanel
-    private lateinit var keyboardVRPanel: VRPanel
+    private var barPanel: VRPanel? = null
+    private var browserPanel: VRPanel? = null
+    private var urlPanel: VRPanel? = null
+    private var settingsVRPanel: VRPanel? = null
+    private var keyboardVRPanel: VRPanel? = null
 
     // Starfield background
     private var starCount = 350
-    private lateinit var starBuffer: FloatBuffer
+    private var starBuffer: FloatBuffer? = null
     private var starProgram = 0
 
     // GL Panel Shaders
@@ -90,118 +91,127 @@ class VRRenderer(
     private val viewProjectionMatrix = FloatArray(16)
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        GLES20.glClearColor(0.027f, 0.039f, 0.070f, 1.0f) // Lunar space black (#070A12)
-        GLES20.glEnable(GLES20.GL_BLEND)
-        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+        try {
+            GLES20.glClearColor(0.027f, 0.039f, 0.070f, 1.0f) // Lunar space black (#070A12)
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+            GLES20.glEnable(GLES20.GL_DEPTH_TEST)
 
-        initShaders()
-        initStarfield()
-        initPanels()
-        handRenderer.initGL()
+            initShaders()
+            initStarfield()
+            initPanels()
+            handRenderer.initGL()
 
-        // Init browser in main thread or GL thread
-        browserView = BrowserView(context, browserController)
+            browserView = BrowserView(context, browserController)
 
-        vrKeyboard.listener = object : VRKeyboardListener {
-            override fun onKeyPressed(character: String) {
-                textInputManager.append(character)
+            vrKeyboard.listener = object : VRKeyboardListener {
+                override fun onKeyPressed(character: String) {
+                    textInputManager.append(character)
+                }
+                override fun onBackspace() {
+                    textInputManager.backspace()
+                }
+                override fun onSpace() {
+                    textInputManager.appendSpace()
+                }
+                override fun onEnter() {
+                    textInputManager.submit()
+                }
+                override fun onCloseKeyboard() {
+                    vrKeyboard.isVisible = false
+                    refreshInteractiveElements()
+                }
             }
-            override fun onBackspace() {
-                textInputManager.backspace()
-            }
-            override fun onSpace() {
-                textInputManager.appendSpace()
-            }
-            override fun onEnter() {
-                textInputManager.submit()
-            }
-            override fun onCloseKeyboard() {
-                vrKeyboard.isVisible = false
-                refreshInteractiveElements()
-            }
+
+            refreshInteractiveElements()
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "Error in onSurfaceCreated", e)
         }
-
-        refreshInteractiveElements()
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-        screenWidth = width
-        screenHeight = height
+        screenWidth = if (width > 0) width else 1920
+        screenHeight = if (height > 0) height else 1080
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+        try {
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
-        // Read sensor orientation
-        vrSession.headTracking.getHeadMatrix(headMatrix)
+            // Read sensor orientation
+            vrSession.headTracking.getHeadMatrix(headMatrix)
 
-        // Hand ray calculation
-        val ray = if (settingsPanel.handTrackingEnabled) {
-            fingerRay.calculateRay(currentPose)
-        } else null
+            // Hand ray calculation
+            val ray = if (settingsPanel.handTrackingEnabled) {
+                fingerRay.calculateRay(currentPose)
+            } else null
 
-        interactionManager.update(ray)
+            interactionManager.update(ray)
 
-        // Update dynamic UI textures
-        updateBarPanel()
-        if (currentDestination == LunarNavDestination.BROWSER) {
-            updateBrowserPanels()
+            // Update dynamic UI textures
+            updateBarPanel()
+            if (currentDestination == LunarNavDestination.BROWSER) {
+                updateBrowserPanels()
+            }
+            if (settingsPanel.isVisible) {
+                updateSettingsPanel()
+            }
+            if (vrKeyboard.isVisible) {
+                updateKeyboardPanel()
+            }
+
+            val halfWidth = screenWidth / 2
+
+            // Left Eye Render
+            GLES20.glViewport(0, 0, halfWidth, screenHeight)
+            vrSession.stereoCamera.updateProjection(halfWidth, screenHeight)
+            vrSession.stereoCamera.computeEyeMatrices(headMatrix)
+            Matrix.multiplyMM(
+                viewProjectionMatrix, 0,
+                vrSession.stereoCamera.getProjectionMatrix(), 0,
+                vrSession.stereoCamera.getLeftEyeViewMatrix(), 0
+            )
+            renderScene(viewProjectionMatrix, ray)
+
+            // Right Eye Render
+            GLES20.glViewport(halfWidth, 0, halfWidth, screenHeight)
+            Matrix.multiplyMM(
+                viewProjectionMatrix, 0,
+                vrSession.stereoCamera.getProjectionMatrix(), 0,
+                vrSession.stereoCamera.getRightEyeViewMatrix(), 0
+            )
+            renderScene(viewProjectionMatrix, ray)
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "Error in onDrawFrame", e)
         }
-        if (settingsPanel.isVisible) {
-            updateSettingsPanel()
-        }
-        if (vrKeyboard.isVisible) {
-            updateKeyboardPanel()
-        }
-
-        val halfWidth = screenWidth / 2
-
-        // Left Eye Render
-        GLES20.glViewport(0, 0, halfWidth, screenHeight)
-        vrSession.stereoCamera.updateProjection(halfWidth, screenHeight)
-        vrSession.stereoCamera.computeEyeMatrices(headMatrix)
-        Matrix.multiplyMM(
-            viewProjectionMatrix, 0,
-            vrSession.stereoCamera.getProjectionMatrix(), 0,
-            vrSession.stereoCamera.getLeftEyeViewMatrix(), 0
-        )
-        renderScene(viewProjectionMatrix, ray)
-
-        // Right Eye Render
-        GLES20.glViewport(halfWidth, 0, halfWidth, screenHeight)
-        Matrix.multiplyMM(
-            viewProjectionMatrix, 0,
-            vrSession.stereoCamera.getProjectionMatrix(), 0,
-            vrSession.stereoCamera.getRightEyeViewMatrix(), 0
-        )
-        renderScene(viewProjectionMatrix, ray)
     }
 
     private fun renderScene(vpMatrix: FloatArray, ray: Ray3D?) {
         // Draw Starfield
         drawStarfield(vpMatrix)
 
+        if (panelProgram == 0) return
+
         // Draw Panels
         GLES20.glUseProgram(panelProgram)
 
         // Floating Lunar Bar
-        barPanel.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+        barPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
 
         // Browser Panel
         if (currentDestination == LunarNavDestination.BROWSER) {
-            urlPanel.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
-            browserPanel.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+            urlPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+            browserPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
 
         // Settings Panel
         if (settingsPanel.isVisible) {
-            settingsVRPanel.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+            settingsVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
 
         // Keyboard Panel
         if (vrKeyboard.isVisible) {
-            keyboardVRPanel.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+            keyboardVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
 
         // Hand Visualization & Ray
@@ -217,6 +227,9 @@ class VRRenderer(
     }
 
     private fun drawStarfield(vpMatrix: FloatArray) {
+        val sBuf = starBuffer ?: return
+        if (starProgram == 0) return
+
         GLES20.glUseProgram(starProgram)
         val mvp = GLES20.glGetUniformLocation(starProgram, "uMVPMatrix")
         val color = GLES20.glGetUniformLocation(starProgram, "vColor")
@@ -225,9 +238,9 @@ class VRRenderer(
         GLES20.glUniformMatrix4fv(mvp, 1, false, vpMatrix, 0)
         GLES20.glUniform4f(color, 0.8f, 0.9f, 1.0f, 0.75f)
 
-        starBuffer.position(0)
+        sBuf.position(0)
         GLES20.glEnableVertexAttribArray(pos)
-        GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 0, starBuffer)
+        GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 0, sBuf)
 
         GLES20.glDrawArrays(GLES20.GL_POINTS, 0, starCount)
         GLES20.glDisableVertexAttribArray(pos)
@@ -331,7 +344,7 @@ class VRRenderer(
 
     private fun updateBarPanel() {
         lunarBar.updateClock()
-        barPanel.drawCustom { canvas, paint ->
+        barPanel?.drawCustom { canvas, paint ->
             // Clear background
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
@@ -393,7 +406,7 @@ class VRRenderer(
 
     private fun updateBrowserPanels() {
         // Draw URL bar
-        urlPanel.drawCustom { canvas, paint ->
+        urlPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
             paint.style = Paint.Style.FILL
@@ -425,12 +438,12 @@ class VRRenderer(
         // Draw WebView content
         val bmp = browserView?.captureBitmap()
         if (bmp != null) {
-            browserPanel.copyBitmap(bmp)
+            browserPanel?.copyBitmap(bmp)
         }
     }
 
     private fun updateSettingsPanel() {
-        settingsVRPanel.drawCustom { canvas, paint ->
+        settingsVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
             // Background panel
@@ -494,7 +507,7 @@ class VRRenderer(
     }
 
     private fun updateKeyboardPanel() {
-        keyboardVRPanel.drawCustom { canvas, paint ->
+        keyboardVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
             // Background
@@ -545,20 +558,11 @@ class VRRenderer(
     }
 
     private fun initPanels() {
-        barPanel = VRPanel("lunar_bar", 0.0f, -0.38f, -1.2f, 0.95f, 0.24f, 1024, 256)
-        barPanel.initGL()
-
-        urlPanel = VRPanel("url_panel", 0.0f, 0.48f, -1.25f, 1.1f, 0.14f, 1024, 128)
-        urlPanel.initGL()
-
-        browserPanel = VRPanel("browser_panel", 0.0f, 0.05f, -1.25f, 1.1f, 0.7f, 1024, 768)
-        browserPanel.initGL()
-
-        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.05f, -1.1f, 1.05f, 0.8f, 1024, 768)
-        settingsVRPanel.initGL()
-
-        keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.15f, -1.0f, 1.0f, 0.5f, 1024, 512)
-        keyboardVRPanel.initGL()
+        barPanel = VRPanel("lunar_bar", 0.0f, -0.38f, -1.2f, 0.95f, 0.24f, 1024, 256).also { it.initGL() }
+        urlPanel = VRPanel("url_panel", 0.0f, 0.48f, -1.25f, 1.1f, 0.14f, 1024, 128).also { it.initGL() }
+        browserPanel = VRPanel("browser_panel", 0.0f, 0.05f, -1.25f, 1.1f, 0.7f, 1024, 768).also { it.initGL() }
+        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.05f, -1.1f, 1.05f, 0.8f, 1024, 768).also { it.initGL() }
+        keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.15f, -1.0f, 1.0f, 0.5f, 1024, 512).also { it.initGL() }
     }
 
     private fun initStarfield() {
@@ -574,10 +578,11 @@ class VRRenderer(
             coords[i * 3 + 2] = (radius * Math.cos(phi.toDouble())).toFloat()
         }
 
-        starBuffer = ByteBuffer.allocateDirect(coords.size * 4)
+        val buf = ByteBuffer.allocateDirect(coords.size * 4)
             .order(ByteOrder.nativeOrder())
             .asFloatBuffer()
-        starBuffer.put(coords).position(0)
+        buf.put(coords).position(0)
+        starBuffer = buf
 
         val vs = """
             uniform mat4 uMVPMatrix;

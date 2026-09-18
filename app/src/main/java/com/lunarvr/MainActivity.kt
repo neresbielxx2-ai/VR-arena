@@ -3,6 +3,7 @@ package com.lunarvr
 import android.content.pm.PackageManager
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -21,17 +22,18 @@ import com.lunarvr.handtracking.MediaPipeHandTracker
 import com.lunarvr.system.PermissionManager
 import com.lunarvr.vr.VRRenderer
 import com.lunarvr.vr.VRSession
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var vrSession: VRSession
-    private lateinit var vrRenderer: VRRenderer
+    private var vrRenderer: VRRenderer? = null
     private lateinit var permissionManager: PermissionManager
     private var glSurfaceView: GLSurfaceView? = null
 
     private var handTracker: HandTracker? = null
-    private val cameraExecutor = Executors.newSingleThreadExecutor()
+    private var cameraExecutor: ExecutorService? = null
 
     private var splashLayout: View? = null
     private var vrContainer: View? = null
@@ -39,30 +41,40 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Keep screen on & immersive landscape fullscreen
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        hideSystemUI()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e("LunarVR", "Uncaught exception in thread ${thread.name}", throwable)
+        }
 
-        setContentView(R.layout.activity_main)
+        try {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            hideSystemUI()
 
-        vrSession = VRSession(this)
-        permissionManager = PermissionManager(this)
+            setContentView(R.layout.activity_main)
 
-        splashLayout = findViewById(R.id.splash_container)
-        vrContainer = findViewById(R.id.vr_container)
+            vrSession = VRSession(this)
+            permissionManager = PermissionManager(this)
 
-        setupWelcomeScreen()
+            splashLayout = findViewById(R.id.splash_container)
+            vrContainer = findViewById(R.id.vr_container)
+
+            setupWelcomeScreen()
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "Error in onCreate", e)
+            Toast.makeText(this, "Erro ao iniciar Lunar VR: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun hideSystemUI() {
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-        )
+        try {
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+            )
+        } catch (_: Exception) {}
     }
 
     private fun setupWelcomeScreen() {
@@ -83,88 +95,109 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startVRExperience() {
-        splashLayout?.visibility = View.GONE
-        vrContainer?.visibility = View.VISIBLE
+        try {
+            splashLayout?.visibility = View.GONE
+            vrContainer?.visibility = View.VISIBLE
 
-        vrRenderer = VRRenderer(this, vrSession)
+            val renderer = VRRenderer(this, vrSession)
+            vrRenderer = renderer
 
-        glSurfaceView = GLSurfaceView(this).apply {
-            setEGLContextClientVersion(2)
-            setRenderer(vrRenderer)
-            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-        }
+            val surfaceView = GLSurfaceView(this).apply {
+                setEGLContextClientVersion(2)
+                setRenderer(renderer)
+                renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+            }
+            glSurfaceView = surfaceView
 
-        findViewById<android.widget.FrameLayout>(R.id.vr_surface_container).addView(glSurfaceView)
+            findViewById<android.widget.FrameLayout>(R.id.vr_surface_container).addView(surfaceView)
 
-        vrSession.start()
-        vrSession.recenterManager.triggerRecenter()
+            vrSession.start()
+            vrSession.recenterManager.triggerRecenter()
 
-        // Check camera permission for Hand Tracking
-        if (permissionManager.hasCameraPermission()) {
-            initHandTracking()
-        } else {
-            permissionManager.requestCameraPermission()
+            // Check camera permission for Hand Tracking
+            if (permissionManager.hasCameraPermission()) {
+                initHandTracking()
+            } else {
+                permissionManager.requestCameraPermission()
+            }
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "Error starting VR Experience", e)
+            Toast.makeText(this, "Erro na renderização VR: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun initHandTracking() {
-        // Try MediaPipe Hand Tracker first; fallback gracefully to Heuristic if assets/libs fail
-        val mpTracker = MediaPipeHandTracker()
-        mpTracker.initialize(this, object : HandTrackerListener {
-            override fun onHandPoseUpdated(pose: HandPose) {
-                vrRenderer.currentPose = pose
-            }
+        try {
+            cameraExecutor = Executors.newSingleThreadExecutor()
 
-            override fun onError(message: String) {
-                // Switch to fallback tracker on error
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Lunar VR: Usando rastreamento de mão adaptativo", Toast.LENGTH_SHORT).show()
+            // Try MediaPipe Hand Tracker first; fallback gracefully to Heuristic if assets/libs fail
+            val mpTracker = MediaPipeHandTracker()
+            mpTracker.initialize(this, object : HandTrackerListener {
+                override fun onHandPoseUpdated(pose: HandPose) {
+                    vrRenderer?.currentPose = pose
                 }
+
+                override fun onError(message: String) {
+                    runOnUiThread {
+                        fallbackToHeuristicTracker()
+                    }
+                }
+            })
+
+            if (mpTracker.isInitialized) {
+                handTracker = mpTracker
+            } else {
                 fallbackToHeuristicTracker()
             }
-        })
 
-        if (mpTracker.isInitialized) {
-            handTracker = mpTracker
-        } else {
+            startCameraSource()
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "Hand tracking init failed, continuing 3DoF", e)
             fallbackToHeuristicTracker()
         }
-
-        startCameraSource()
     }
 
     private fun fallbackToHeuristicTracker() {
-        val heuristic = HeuristicHandTracker()
-        heuristic.initialize(this, object : HandTrackerListener {
-            override fun onHandPoseUpdated(pose: HandPose) {
-                vrRenderer.currentPose = pose
-            }
+        try {
+            val heuristic = HeuristicHandTracker()
+            heuristic.initialize(this, object : HandTrackerListener {
+                override fun onHandPoseUpdated(pose: HandPose) {
+                    vrRenderer?.currentPose = pose
+                }
 
-            override fun onError(message: String) {}
-        })
-        handTracker = heuristic
+                override fun onError(message: String) {}
+            })
+            handTracker = heuristic
+        } catch (_: Throwable) {}
     }
 
     private fun startCameraSource() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            try {
-                val cameraProvider = cameraProviderFuture.get()
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
+        try {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+            cameraProviderFuture.addListener({
+                try {
+                    val cameraProvider = cameraProviderFuture.get()
+                    val imageAnalysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
 
-                imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                    handTracker?.processImageProxy(imageProxy)
+                    val exec = cameraExecutor
+                    if (exec != null && !exec.isShutdown) {
+                        imageAnalysis.setAnalyzer(exec) { imageProxy ->
+                            handTracker?.processImageProxy(imageProxy)
+                        }
+
+                        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
+                    }
+                } catch (e: Throwable) {
+                    Log.w("LunarVR", "Camera binding skipped: ${e.message}")
                 }
-
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
-            } catch (e: Exception) {
-                // Device might have no camera or camera in use
-            }
-        }, ContextCompat.getMainExecutor(this))
+            }, ContextCompat.getMainExecutor(this))
+        } catch (e: Throwable) {
+            Log.w("LunarVR", "ProcessCameraProvider failed: ${e.message}")
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -173,7 +206,7 @@ class MainActivity : AppCompatActivity() {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 initHandTracking()
             } else {
-                Toast.makeText(this, "Lunar VR continua em 3DoF sem rastreamento de mão", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Lunar VR ativo em 3DoF (Câmera dispensada)", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -181,22 +214,34 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         hideSystemUI()
-        glSurfaceView?.onResume()
-        if (vrSession.isSessionActive) {
-            vrSession.resume()
+        try {
+            glSurfaceView?.onResume()
+            if (vrSession.isSessionActive) {
+                vrSession.resume()
+            }
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "onResume error", e)
         }
     }
 
     override fun onPause() {
         super.onPause()
-        glSurfaceView?.onPause()
-        vrSession.pause()
+        try {
+            glSurfaceView?.onPause()
+            vrSession.pause()
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "onPause error", e)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        vrSession.stop()
-        handTracker?.release()
-        cameraExecutor.shutdown()
+        try {
+            vrSession.stop()
+            handTracker?.release()
+            cameraExecutor?.shutdown()
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "onDestroy error", e)
+        }
     }
 }
