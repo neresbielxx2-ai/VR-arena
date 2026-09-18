@@ -39,10 +39,12 @@ jobs:
         run: |
           gradle assembleDebug --no-daemon --info > full_build.log 2>&1
 
-      - name: Print Build Error Details
+      - name: Extract Error to Annotation
         run: |
-          echo "=== BUILD LOG TAIL ==="
-          grep -C 10 "FAILURE:" full_build.log || tail -n 80 full_build.log
+          tail -n 60 full_build.log > extracted_error.txt
+          while IFS= read -r line; do
+            echo "::notice title=GradleLog::$line"
+          done < extracted_error.txt
 
       - name: Fail if build step failed
         if: steps.build_step.outcome == 'failure'
