@@ -26,80 +26,89 @@ class HeuristicHandTracker : HandTracker {
 
     override fun processImageProxy(imageProxy: ImageProxy) {
         try {
-            if (imageProxy.format != ImageFormat.YUV_420_888) {
-                // If not YUV, fallback or sample Y
+            val planes = imageProxy.planes
+            if (planes.isEmpty()) {
                 imageProxy.close()
                 return
             }
 
-            val yPlane = imageProxy.planes[0]
-            val uPlane = imageProxy.planes[1]
-            val vPlane = imageProxy.planes[2]
-
-            val yBuffer = yPlane.buffer
-            val uBuffer = uPlane.buffer
-            val vBuffer = vPlane.buffer
-
+            val yPlane = planes[0]
             val width = imageProxy.width
             val height = imageProxy.height
 
+            // Use Y plane directly if U/V not present or corrupted
+            val yBuffer = yPlane.buffer
             val yRowStride = yPlane.rowStride
-            val uvRowStride = uPlane.rowStride
-            val uvPixelStride = uPlane.pixelStride
 
-            // Sample every 8 pixels to keep processing under 3ms
-            val step = 8
+            val hasUv = planes.size >= 3
+            val uPlane = if (hasUv) planes[1] else null
+            val vPlane = if (hasUv) planes[2] else null
+            val uBuffer = uPlane?.buffer
+            val vBuffer = vPlane?.buffer
+            val uvRowStride = uPlane?.rowStride ?: 0
+            val uvPixelStride = uPlane?.pixelStride ?: 1
+
+            val step = 6
             var sumX = 0L
             var sumY = 0L
             var handPixelCount = 0
 
-            // Search mainly in lower/middle region where hands naturally enter the camera view
-            val startY = height / 5
-            val endY = height
+            val startY = height / 6
+            val endY = (height * 5) / 6
 
             for (y in startY until endY step step) {
                 for (x in 0 until width step step) {
                     val yIndex = y * yRowStride + x
-                    val uvIndex = (y / 2) * uvRowStride + (x / 2) * uvPixelStride
+                    if (yIndex >= yBuffer.limit()) continue
 
-                    if (yIndex < yBuffer.limit() && uvIndex < uBuffer.limit() && uvIndex < vBuffer.limit()) {
-                        val yVal = yBuffer.get(yIndex).toInt() and 0xFF
-                        val uVal = uBuffer.get(uvIndex).toInt() and 0xFF
-                        val vVal = vBuffer.get(uvIndex).toInt() and 0xFF
+                    val yVal = yBuffer.get(yIndex).toInt() and 0xFF
 
-                        // Human skin chrominance bounding box in YCbCr:
-                        // Y > 40, Cb (u) between 77 and 127, Cr (v) between 133 and 173
-                        if (yVal > 40 && uVal in 75..130 && vVal in 130..180) {
-                            sumX += x
-                            sumY += y
-                            handPixelCount++
+                    var isSkin = false
+                    if (hasUv && uBuffer != null && vBuffer != null) {
+                        val uvIndex = (y / 2) * uvRowStride + (x / 2) * uvPixelStride
+                        if (uvIndex < uBuffer.limit() && uvIndex < vBuffer.limit()) {
+                            val uVal = uBuffer.get(uvIndex).toInt() and 0xFF
+                            val vVal = vBuffer.get(uvIndex).toInt() and 0xFF
+                            // Broad skin chrominance filter
+                            if (yVal in 45..240 && uVal in 70..135 && vVal in 125..185) {
+                                isSkin = true
+                            }
                         }
+                    } else {
+                        // High brightness contrast fallback
+                        if (yVal in 70..230) {
+                            isSkin = true
+                        }
+                    }
+
+                    if (isSkin) {
+                        sumX += x
+                        sumY += y
+                        handPixelCount++
                     }
                 }
             }
 
-            // Need at least 25 skin pixels sampled
-            if (handPixelCount > 25) {
+            // Lowered threshold to ensure high responsiveness when hand is shown
+            if (handPixelCount >= 12) {
                 consecutiveFramesWithoutHand = 0
                 val rawCenterX = sumX.toFloat() / handPixelCount / width
                 val rawCenterY = sumY.toFloat() / handPixelCount / height
 
-                // Exponential smoothing (alpha = 0.35)
-                smoothedX = smoothedX * 0.65f + rawCenterX * 0.35f
-                smoothedY = smoothedY * 0.65f + rawCenterY * 0.35f
+                // Fast responsive smoothing (alpha = 0.5)
+                smoothedX = smoothedX * 0.5f + rawCenterX * 0.5f
+                smoothedY = smoothedY * 0.5f + rawCenterY * 0.5f
                 hasDetection = true
 
-                // In landscape rear camera:
-                // Camera coords: X goes right, Y goes down.
                 val tipX = smoothedX
-                val tipY = (smoothedY - 0.12f).coerceAtLeast(0.05f) // Index tip is above center of hand
+                val tipY = (smoothedY - 0.12f).coerceAtLeast(0.02f)
                 val pipY = smoothedY - 0.05f
                 val mcpY = smoothedY
 
                 val pose = HandPose(
                     isDetected = true,
                     isLeftHand = false,
-                    wrist = Landmark3D(smoothedX, (smoothedY + 0.15f).coerceAtMost(0.95f), 0.0f),
+                    wrist = Landmark3D(smoothedX, (smoothedY + 0.15f).coerceAtMost(0.98f), 0.0f),
                     indexTip = Landmark3D(tipX, tipY, 0.0f),
                     indexPip = Landmark3D(smoothedX, pipY, 0.0f),
                     indexMcp = Landmark3D(smoothedX, mcpY, 0.0f),
@@ -112,7 +121,7 @@ class HeuristicHandTracker : HandTracker {
                 listener?.onHandPoseUpdated(pose)
             } else {
                 consecutiveFramesWithoutHand++
-                if (consecutiveFramesWithoutHand > 5) {
+                if (consecutiveFramesWithoutHand > 3) {
                     hasDetection = false
                     listener?.onHandPoseUpdated(HandPose.empty())
                 }

@@ -5,7 +5,7 @@ import android.opengl.Matrix
 class StereoCamera {
 
     var ipd: Float = 0.064f // 64mm average interpupillary distance
-    var fovDegrees: Float = 95.0f
+    var fovDegrees: Float = 85.0f
     var nearClip: Float = 0.1f
     var farClip: Float = 100.0f
     var mirrorLeftRight: Boolean = false
@@ -19,22 +19,22 @@ class StereoCamera {
         Matrix.perspectiveM(projectionMatrix, 0, fovDegrees, aspect, nearClip, farClip)
     }
 
-    fun computeEyeMatrices(headMatrix: FloatArray) {
-        // Translation for Left Eye (-ipd / 2)
+    fun computeEyeMatrices(headViewMatrix: FloatArray) {
+        // Translation for Left Eye (-ipd / 2 along local X)
         val leftTranslation = FloatArray(16)
         Matrix.setIdentityM(leftTranslation, 0)
         val leftOffset = if (mirrorLeftRight) (ipd / 2.0f) else (-ipd / 2.0f)
         Matrix.translateM(leftTranslation, 0, leftOffset, 0f, 0f)
 
-        // Translation for Right Eye (+ipd / 2)
+        // Translation for Right Eye (+ipd / 2 along local X)
         val rightTranslation = FloatArray(16)
         Matrix.setIdentityM(rightTranslation, 0)
         val rightOffset = if (mirrorLeftRight) (-ipd / 2.0f) else (ipd / 2.0f)
         Matrix.translateM(rightTranslation, 0, rightOffset, 0f, 0f)
 
-        // Combine translation with head orientation
-        Matrix.multiplyMM(leftEyeViewMatrix, 0, leftTranslation, 0, headMatrix, 0)
-        Matrix.multiplyMM(rightEyeViewMatrix, 0, rightTranslation, 0, headMatrix, 0)
+        // In Camera space: V_eye = EyeTranslation * HeadViewMatrix
+        Matrix.multiplyMM(leftEyeViewMatrix, 0, leftTranslation, 0, headViewMatrix, 0)
+        Matrix.multiplyMM(rightEyeViewMatrix, 0, rightTranslation, 0, headViewMatrix, 0)
     }
 
     fun getLeftEyeViewMatrix(): FloatArray = leftEyeViewMatrix

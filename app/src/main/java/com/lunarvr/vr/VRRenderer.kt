@@ -87,13 +87,12 @@ class VRRenderer(
     // Navigation State
     private var currentDestination = LunarNavDestination.HOME
 
-    private val headMatrix = FloatArray(16)
+    private val headViewMatrix = FloatArray(16)
     private val viewProjectionMatrix = FloatArray(16)
 
-    // Smooth UI Follow Camera: UI follows slowly with head movement or locks on recenter
-    var uiFollowsCamera: Boolean = true
-    private var currentUiYaw = 0f
-    private var currentUiPitch = 0f
+    // Gaze Cursor for Fallback Reticle / Aiming
+    private var reticleProgram = 0
+    private var reticleBuffer: FloatBuffer? = null
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
@@ -104,6 +103,7 @@ class VRRenderer(
 
             initShaders()
             initStarfield()
+            initReticle()
             initPanels()
             handRenderer.initGL()
 
@@ -143,13 +143,21 @@ class VRRenderer(
         try {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
-            // Read sensor orientation
-            vrSession.headTracking.getHeadMatrix(headMatrix)
+            // Read sensor orientation (Camera View Matrix)
+            vrSession.headTracking.getHeadMatrix(headViewMatrix)
 
-            // Calculate ray from hand tracking
-            val ray = if (settingsPanel.handTrackingEnabled) {
+            // Calculate Ray: If hand is detected, use hand ray. Otherwise, use Gaze Pointer (center of head)
+            val ray = if (currentPose.isDetected && settingsPanel.handTrackingEnabled) {
                 fingerRay.calculateRay(currentPose)
-            } else null
+            } else {
+                // Forward Gaze pointer ray along the head forward vector
+                // headViewMatrix rotates world points into camera space. The camera looks down negative Z.
+                // In world space, camera forward direction is row 2 of view matrix negated:
+                val fwdX = -headViewMatrix[2]
+                val fwdY = -headViewMatrix[6]
+                val fwdZ = -headViewMatrix[10]
+                Ray3D(0f, 0f, 0f, fwdX, fwdY, fwdZ)
+            }
 
             interactionManager.update(ray)
 
@@ -170,7 +178,7 @@ class VRRenderer(
             // Left Eye Render
             GLES20.glViewport(0, 0, halfWidth, screenHeight)
             vrSession.stereoCamera.updateProjection(halfWidth, screenHeight)
-            vrSession.stereoCamera.computeEyeMatrices(headMatrix)
+            vrSession.stereoCamera.computeEyeMatrices(headViewMatrix)
             Matrix.multiplyMM(
                 viewProjectionMatrix, 0,
                 vrSession.stereoCamera.getProjectionMatrix(), 0,
@@ -192,7 +200,7 @@ class VRRenderer(
     }
 
     private fun renderScene(vpMatrix: FloatArray, ray: Ray3D?) {
-        // Draw Starfield (attached to world orientation)
+        // Draw Starfield (attached to view)
         drawStarfield(vpMatrix)
 
         if (panelProgram == 0) return
@@ -220,7 +228,7 @@ class VRRenderer(
         }
 
         // Hand Visualization & Ray
-        if (settingsPanel.handTrackingEnabled) {
+        if (settingsPanel.handTrackingEnabled && currentPose.isDetected) {
             handRenderer.renderHand(
                 vpMatrix,
                 currentPose,
@@ -228,7 +236,76 @@ class VRRenderer(
                 settingsPanel.showFingerRay,
                 settingsPanel.markerRadius
             )
+        } else {
+            // Draw Gaze Reticle when hand is not in front
+            drawReticle(vpMatrix)
         }
+    }
+
+    private fun drawReticle(vpMatrix: FloatArray) {
+        val rBuf = reticleBuffer ?: return
+        if (reticleProgram == 0) return
+
+        GLES20.glUseProgram(reticleProgram)
+        val mvp = GLES20.glGetUniformLocation(reticleProgram, "uMVPMatrix")
+        val color = GLES20.glGetUniformLocation(reticleProgram, "vColor")
+        val pos = GLES20.glGetAttribLocation(reticleProgram, "vPosition")
+
+        // Draw a comfortable small center reticle circle at Z = -1.2
+        val model = FloatArray(16)
+        Matrix.setIdentityM(model, 0)
+        Matrix.translateM(model, 0, 0f, 0f, -1.2f)
+
+        val mvpMatrix = FloatArray(16)
+        Matrix.multiplyMM(mvpMatrix, 0, vpMatrix, 0, model, 0)
+
+        GLES20.glUniformMatrix4fv(mvp, 1, false, mvpMatrix, 0)
+        // High-visibility lunar cyan
+        GLES20.glUniform4f(color, 0.0f, 0.95f, 1.0f, 0.85f)
+
+        rBuf.position(0)
+        GLES20.glEnableVertexAttribArray(pos)
+        GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 0, rBuf)
+
+        GLES20.glLineWidth(3.0f)
+        GLES20.glDrawArrays(GLES20.GL_LINE_LOOP, 0, 24)
+        GLES20.glDisableVertexAttribArray(pos)
+    }
+
+    private fun initReticle() {
+        val segments = 24
+        val radius = 0.02f
+        val coords = FloatArray(segments * 3)
+        for (i in 0 until segments) {
+            val angle = 2.0 * Math.PI * i / segments
+            coords[i * 3] = (radius * Math.cos(angle)).toFloat()
+            coords[i * 3 + 1] = (radius * Math.sin(angle)).toFloat()
+            coords[i * 3 + 2] = 0f
+        }
+
+        val buf = ByteBuffer.allocateDirect(coords.size * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+        buf.put(coords).position(0)
+        reticleBuffer = buf
+
+        val vs = """
+            uniform mat4 uMVPMatrix;
+            attribute vec4 vPosition;
+            void main() {
+                gl_Position = uMVPMatrix * vPosition;
+            }
+        """.trimIndent()
+
+        val fs = """
+            precision mediump float;
+            uniform vec4 vColor;
+            void main() {
+                gl_FragColor = vColor;
+            }
+        """.trimIndent()
+
+        reticleProgram = createProgram(vs, fs)
     }
 
     private fun drawStarfield(vpMatrix: FloatArray) {
@@ -321,15 +398,15 @@ class VRRenderer(
     private fun setupKeyboardButtons() {
         keyboardButtons.clear()
         val rows = vrKeyboard.getCurrentRows()
-        val startY = -0.02f
-        val zPos = -1.05f
-        val btnH = 0.065f
+        val startY = 0.05f
+        val zPos = -1.25f
+        val btnH = 0.07f
 
         for (r in rows.indices) {
             val row = rows[r]
-            val btnW = 0.85f / row.size
-            val startX = -0.425f + (btnW / 2.0f)
-            val y = startY - (r * 0.075f)
+            val btnW = 0.90f / row.size
+            val startX = -0.45f + (btnW / 2.0f)
+            val y = startY - (r * 0.08f)
 
             for (c in row.indices) {
                 val key = row[c]
@@ -562,18 +639,18 @@ class VRRenderer(
     }
 
     private fun initPanels() {
-        // Lunar Bar: sits right in comfortable lower view (y = -0.32f, z = -1.25f, height = 0.28f)
-        barPanel = VRPanel("lunar_bar", 0.0f, -0.32f, -1.25f, 1.05f, 0.28f, 1024, 256).also { it.initGL() }
+        // Lunar Bar: comfortably positioned at eye level
+        barPanel = VRPanel("lunar_bar", 0.0f, -0.15f, -1.4f, 1.15f, 0.30f, 1024, 256).also { it.initGL() }
 
         // Browser & URL Panels: centered right in front of user
-        urlPanel = VRPanel("url_panel", 0.0f, 0.45f, -1.25f, 1.1f, 0.14f, 1024, 128).also { it.initGL() }
-        browserPanel = VRPanel("browser_panel", 0.0f, 0.02f, -1.25f, 1.1f, 0.70f, 1024, 768).also { it.initGL() }
+        urlPanel = VRPanel("url_panel", 0.0f, 0.48f, -1.4f, 1.15f, 0.15f, 1024, 128).also { it.initGL() }
+        browserPanel = VRPanel("browser_panel", 0.0f, 0.05f, -1.4f, 1.15f, 0.72f, 1024, 768).also { it.initGL() }
 
         // Settings Panel
-        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.05f, -1.15f, 1.08f, 0.82f, 1024, 768).also { it.initGL() }
+        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.10f, -1.35f, 1.12f, 0.85f, 1024, 768).also { it.initGL() }
 
-        // Virtual 3D Keyboard: positioned comfortably below browser
-        keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.12f, -1.05f, 1.05f, 0.52f, 1024, 512).also { it.initGL() }
+        // Virtual 3D Keyboard
+        keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.05f, -1.25f, 1.10f, 0.55f, 1024, 512).also { it.initGL() }
     }
 
     private fun initStarfield() {

@@ -6,8 +6,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.opengl.Matrix
-import android.view.Surface
-import android.view.WindowManager
+import android.util.Log
 
 enum class TrackingSensorType {
     ROTATION_VECTOR,
@@ -20,7 +19,6 @@ enum class TrackingSensorType {
 class HeadTracking(private val context: Context) : SensorEventListener {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
 
     var activeSensorType: TrackingSensorType = TrackingSensorType.NONE
         private set
@@ -31,9 +29,9 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     var invertYaw: Boolean = false
 
     private val rawRotationMatrix = FloatArray(16)
-    private val remappedMatrix = FloatArray(16)
+    private val landscapeRotationMatrix = FloatArray(16)
     private val centerOffsetMatrix = FloatArray(16)
-    private val finalHeadMatrix = FloatArray(16)
+    private val finalHeadViewMatrix = FloatArray(16)
 
     // Fallback complementary filter variables
     private val gravity = FloatArray(3)
@@ -43,9 +41,9 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     init {
         Matrix.setIdentityM(rawRotationMatrix, 0)
-        Matrix.setIdentityM(remappedMatrix, 0)
+        Matrix.setIdentityM(landscapeRotationMatrix, 0)
         Matrix.setIdentityM(centerOffsetMatrix, 0)
-        Matrix.setIdentityM(finalHeadMatrix, 0)
+        Matrix.setIdentityM(finalHeadViewMatrix, 0)
     }
 
     fun start() {
@@ -60,32 +58,34 @@ class HeadTracking(private val context: Context) : SensorEventListener {
         val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         when {
+            gameRotSensor != null -> {
+                // Game Rotation Vector is preferred for mobile VR (no magnetic field interference/jump)
+                sensorManager.registerListener(this, gameRotSensor, SensorManager.SENSOR_DELAY_FASTEST)
+                activeSensorType = TrackingSensorType.GAME_ROTATION_VECTOR
+                sensorStatusMessage = "3DoF: Giroscópio + Acelerômetro (VR Modo Estável)"
+            }
             rotVectorSensor != null -> {
-                sensorManager.registerListener(this, rotVectorSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(this, rotVectorSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ROTATION_VECTOR
                 sensorStatusMessage = "3DoF: Sensor Rotação Absoluto (Alta precisão)"
             }
-            gameRotSensor != null -> {
-                sensorManager.registerListener(this, gameRotSensor, SensorManager.SENSOR_DELAY_GAME)
-                activeSensorType = TrackingSensorType.GAME_ROTATION_VECTOR
-                sensorStatusMessage = "3DoF: Giroscópio + Acelerômetro (Sem bússola)"
-            }
             gyroSensor != null && accelSensor != null -> {
-                sensorManager.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_GAME)
-                sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_FASTEST)
+                sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ACCEL_GYRO_FUSION
                 sensorStatusMessage = "3DoF: Fusão Giroscópio + Acelerômetro"
             }
             accelSensor != null -> {
-                sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ACCELEROMETER_ONLY
-                sensorStatusMessage = "3DoF Reduzido: Apenas acelerômetro (Inclinômetro)"
+                sensorStatusMessage = "3DoF Reduzido: Apenas acelerômetro"
             }
             else -> {
                 activeSensorType = TrackingSensorType.NONE
                 sensorStatusMessage = "Nenhum sensor de orientação encontrado"
             }
         }
+        Log.d("LunarVR", "HeadTracking started: $sensorStatusMessage")
     }
 
     fun stop() {
@@ -94,9 +94,10 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun recenter() {
         synchronized(this) {
-            // Invert the current raw orientation to cancel it out as the new identity
-            Matrix.invertM(centerOffsetMatrix, 0, rawRotationMatrix, 0)
+            // Store current landscape world orientation as the zero baseline
+            System.arraycopy(landscapeRotationMatrix, 0, centerOffsetMatrix, 0, 16)
         }
+        Log.d("LunarVR", "HeadTracking recentered")
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -122,6 +123,15 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                     }
                 }
             }
+
+            // Standard Android VR Landscape coordinate remapping:
+            // Device natural portrait X (right) becomes -Y, and Y (up) becomes X (right) in landscape
+            SensorManager.remapCoordinateSystem(
+                rawRotationMatrix,
+                SensorManager.AXIS_Y,
+                SensorManager.AXIS_MINUS_X,
+                landscapeRotationMatrix
+            )
         }
     }
 
@@ -129,43 +139,24 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun getHeadMatrix(outputMatrix: FloatArray) {
         synchronized(this) {
-            val rotation = windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_90
-            var axisX = SensorManager.AXIS_X
-            var axisY = SensorManager.AXIS_Y
+            // Compute relative rotation: R_rel = (R_center)^T * R_current
+            val centerTransposed = FloatArray(16)
+            Matrix.transposeM(centerTransposed, 0, centerOffsetMatrix, 0)
 
-            // Landscape orientation compensation
-            when (rotation) {
-                Surface.ROTATION_0 -> {
-                    axisX = SensorManager.AXIS_X
-                    axisY = SensorManager.AXIS_Y
-                }
-                Surface.ROTATION_90 -> {
-                    axisX = SensorManager.AXIS_Y
-                    axisY = SensorManager.AXIS_MINUS_X
-                }
-                Surface.ROTATION_180 -> {
-                    axisX = SensorManager.AXIS_MINUS_X
-                    axisY = SensorManager.AXIS_MINUS_Y
-                }
-                Surface.ROTATION_270 -> {
-                    axisX = SensorManager.AXIS_MINUS_Y
-                    axisY = SensorManager.AXIS_X
-                }
-            }
+            val relativeRotation = FloatArray(16)
+            Matrix.multiplyMM(relativeRotation, 0, centerTransposed, 0, landscapeRotationMatrix, 0)
 
-            SensorManager.remapCoordinateSystem(rawRotationMatrix, axisX, axisY, remappedMatrix)
+            // Convert World-to-Device rotation into Camera View Matrix (invert/transpose of camera pose)
+            Matrix.transposeM(finalHeadViewMatrix, 0, relativeRotation, 0)
 
-            // Multiply centerOffsetMatrix * remappedMatrix -> finalHeadMatrix
-            Matrix.multiplyMM(finalHeadMatrix, 0, centerOffsetMatrix, 0, remappedMatrix, 0)
-
-            // Invert axes if requested
+            // Invert axes if user toggled in settings
             if (invertPitch || invertYaw) {
                 val scaleX = if (invertYaw) -1.0f else 1.0f
                 val scaleY = if (invertPitch) -1.0f else 1.0f
-                Matrix.scaleM(finalHeadMatrix, 0, scaleX, scaleY, 1.0f)
+                Matrix.scaleM(finalHeadViewMatrix, 0, scaleX, scaleY, 1.0f)
             }
 
-            System.arraycopy(finalHeadMatrix, 0, outputMatrix, 0, 16)
+            System.arraycopy(finalHeadViewMatrix, 0, outputMatrix, 0, 16)
         }
     }
 }
