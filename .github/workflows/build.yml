@@ -32,18 +32,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.4'
+          cache-disabled: true
 
       - name: Run Build and Save Log
         id: build_step
         continue-on-error: true
         run: |
-          gradle assembleDebug --no-daemon --info > full_build.log 2>&1
+          gradle assembleDebug --no-daemon --stacktrace > full_build.log 2>&1
 
       - name: Extract Error to Annotation
         run: |
-          tail -n 60 full_build.log > extracted_error.txt
+          grep -B 2 -A 8 "FAILURE: Build failed with an exception." full_build.log > extracted_error.txt || tail -n 25 full_build.log > extracted_error.txt
           while IFS= read -r line; do
-            echo "::notice title=GradleLog::$line"
+            echo "::error title=GradleException::$line"
           done < extracted_error.txt
 
       - name: Fail if build step failed
