@@ -114,7 +114,7 @@ class MainActivity : AppCompatActivity() {
             vrSession.start()
             vrSession.recenterManager.triggerRecenter()
 
-            // Check camera permission for Hand Tracking
+            // Request camera permission for Hand Tracking
             if (permissionManager.hasCameraPermission()) {
                 initHandTracking()
             } else {
@@ -130,45 +130,22 @@ class MainActivity : AppCompatActivity() {
         try {
             cameraExecutor = Executors.newSingleThreadExecutor()
 
-            // Try MediaPipe Hand Tracker first; fallback gracefully to Heuristic if assets/libs fail
-            val mpTracker = MediaPipeHandTracker()
-            mpTracker.initialize(this, object : HandTrackerListener {
-                override fun onHandPoseUpdated(pose: HandPose) {
-                    vrRenderer?.currentPose = pose
-                }
-
-                override fun onError(message: String) {
-                    runOnUiThread {
-                        fallbackToHeuristicTracker()
-                    }
-                }
-            })
-
-            if (mpTracker.isInitialized) {
-                handTracker = mpTracker
-            } else {
-                fallbackToHeuristicTracker()
-            }
-
-            startCameraSource()
-        } catch (e: Throwable) {
-            Log.e("LunarVR", "Hand tracking init failed, continuing 3DoF", e)
-            fallbackToHeuristicTracker()
-        }
-    }
-
-    private fun fallbackToHeuristicTracker() {
-        try {
             val heuristic = HeuristicHandTracker()
             heuristic.initialize(this, object : HandTrackerListener {
                 override fun onHandPoseUpdated(pose: HandPose) {
                     vrRenderer?.currentPose = pose
                 }
 
-                override fun onError(message: String) {}
+                override fun onError(message: String) {
+                    Log.w("LunarVR", "Hand tracker error: $message")
+                }
             })
             handTracker = heuristic
-        } catch (_: Throwable) {}
+
+            startCameraSource()
+        } catch (e: Throwable) {
+            Log.e("LunarVR", "Hand tracking init failed, continuing 3DoF", e)
+        }
     }
 
     private fun startCameraSource() {
@@ -179,6 +156,7 @@ class MainActivity : AppCompatActivity() {
                     val cameraProvider = cameraProviderFuture.get()
                     val imageAnalysis = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                         .build()
 
                     val exec = cameraExecutor
@@ -187,9 +165,20 @@ class MainActivity : AppCompatActivity() {
                             handTracker?.processImageProxy(imageProxy)
                         }
 
-                        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
+                        // Try back camera first; if not available, try front camera
+                        val cameraSelector = if (cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+                            CameraSelector.DEFAULT_BACK_CAMERA
+                        } else if (cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)) {
+                            CameraSelector.DEFAULT_FRONT_CAMERA
+                        } else {
+                            null
+                        }
+
+                        if (cameraSelector != null) {
+                            cameraProvider.unbindAll()
+                            cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
+                            Log.d("LunarVR", "Camera bound successfully for hand tracking")
+                        }
                     }
                 } catch (e: Throwable) {
                     Log.w("LunarVR", "Camera binding skipped: ${e.message}")

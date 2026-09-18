@@ -90,6 +90,11 @@ class VRRenderer(
     private val headMatrix = FloatArray(16)
     private val viewProjectionMatrix = FloatArray(16)
 
+    // Smooth UI Follow Camera: UI follows slowly with head movement or locks on recenter
+    var uiFollowsCamera: Boolean = true
+    private var currentUiYaw = 0f
+    private var currentUiPitch = 0f
+
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
             GLES20.glClearColor(0.027f, 0.039f, 0.070f, 1.0f) // Lunar space black (#070A12)
@@ -141,7 +146,7 @@ class VRRenderer(
             // Read sensor orientation
             vrSession.headTracking.getHeadMatrix(headMatrix)
 
-            // Hand ray calculation
+            // Calculate ray from hand tracking
             val ray = if (settingsPanel.handTrackingEnabled) {
                 fingerRay.calculateRay(currentPose)
             } else null
@@ -187,7 +192,7 @@ class VRRenderer(
     }
 
     private fun renderScene(vpMatrix: FloatArray, ray: Ray3D?) {
-        // Draw Starfield
+        // Draw Starfield (attached to world orientation)
         drawStarfield(vpMatrix)
 
         if (panelProgram == 0) return
@@ -316,21 +321,21 @@ class VRRenderer(
     private fun setupKeyboardButtons() {
         keyboardButtons.clear()
         val rows = vrKeyboard.getCurrentRows()
-        val startY = -0.05f
-        val zPos = -1.0f
-        val btnH = 0.05f
+        val startY = -0.02f
+        val zPos = -1.05f
+        val btnH = 0.065f
 
         for (r in rows.indices) {
             val row = rows[r]
-            val btnW = 0.8f / row.size
-            val startX = -0.4f + (btnW / 2.0f)
-            val y = startY - (r * 0.065f)
+            val btnW = 0.85f / row.size
+            val startX = -0.425f + (btnW / 2.0f)
+            val y = startY - (r * 0.075f)
 
             for (c in row.indices) {
                 val key = row[c]
                 val x = startX + (c * btnW)
                 keyboardButtons.add(
-                    VRKey("key_${key}_$r", key, x, y, zPos, btnW * 0.9f, btnH) {
+                    VRKey("key_${key}_$r", key, x, y, zPos, btnW * 0.92f, btnH) {
                         vrKeyboard.handleKeyPress(key)
                         if (key in listOf("SHIFT", "shift", "123", "ABC")) {
                             setupKeyboardButtons()
@@ -345,7 +350,6 @@ class VRRenderer(
     private fun updateBarPanel() {
         lunarBar.updateClock()
         barPanel?.drawCustom { canvas, paint ->
-            // Clear background
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
             // Outer Lunar Pill Glow & Border
@@ -368,10 +372,10 @@ class VRRenderer(
             // Draw Buttons
             for (i in lunarBar.buttons.indices) {
                 val btn = lunarBar.buttons[i]
-                val bx = 40f + i * 240f
-                val by = 90f
-                val bw = 210f
-                val bh = 130f
+                val bx = 30f + i * 242f
+                val by = 85f
+                val bw = 225f
+                val bh = 140f
 
                 // Button back fill
                 paint.style = Paint.Style.FILL
@@ -390,16 +394,16 @@ class VRRenderer(
 
                 if (btn.isHovered && btn.hoverProgress > 0f) {
                     paint.color = Color.parseColor("#00E5FF")
-                    paint.strokeWidth = 8f
-                    val progressW = bw * btn.hoverProgress
-                    canvas.drawLine(bx + 15f, by + bh - 10f, bx + 15f + progressW, by + bh - 10f, paint)
+                    paint.strokeWidth = 10f
+                    val progressW = (bw - 24f) * btn.hoverProgress
+                    canvas.drawLine(bx + 12f, by + bh - 12f, bx + 12f + progressW, by + bh - 12f, paint)
                 }
 
                 // Text
                 paint.style = Paint.Style.FILL
                 paint.textSize = 32f
                 paint.color = Color.parseColor("#F8FAFC")
-                canvas.drawText(btn.label, bx + 28f, by + 75f, paint)
+                canvas.drawText(btn.label, bx + 24f, by + 80f, paint)
             }
         }
     }
@@ -558,11 +562,18 @@ class VRRenderer(
     }
 
     private fun initPanels() {
-        barPanel = VRPanel("lunar_bar", 0.0f, -0.38f, -1.2f, 0.95f, 0.24f, 1024, 256).also { it.initGL() }
-        urlPanel = VRPanel("url_panel", 0.0f, 0.48f, -1.25f, 1.1f, 0.14f, 1024, 128).also { it.initGL() }
-        browserPanel = VRPanel("browser_panel", 0.0f, 0.05f, -1.25f, 1.1f, 0.7f, 1024, 768).also { it.initGL() }
-        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.05f, -1.1f, 1.05f, 0.8f, 1024, 768).also { it.initGL() }
-        keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.15f, -1.0f, 1.0f, 0.5f, 1024, 512).also { it.initGL() }
+        // Lunar Bar: sits right in comfortable lower view (y = -0.32f, z = -1.25f, height = 0.28f)
+        barPanel = VRPanel("lunar_bar", 0.0f, -0.32f, -1.25f, 1.05f, 0.28f, 1024, 256).also { it.initGL() }
+
+        // Browser & URL Panels: centered right in front of user
+        urlPanel = VRPanel("url_panel", 0.0f, 0.45f, -1.25f, 1.1f, 0.14f, 1024, 128).also { it.initGL() }
+        browserPanel = VRPanel("browser_panel", 0.0f, 0.02f, -1.25f, 1.1f, 0.70f, 1024, 768).also { it.initGL() }
+
+        // Settings Panel
+        settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.05f, -1.15f, 1.08f, 0.82f, 1024, 768).also { it.initGL() }
+
+        // Virtual 3D Keyboard: positioned comfortably below browser
+        keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.12f, -1.05f, 1.05f, 0.52f, 1024, 512).also { it.initGL() }
     }
 
     private fun initStarfield() {

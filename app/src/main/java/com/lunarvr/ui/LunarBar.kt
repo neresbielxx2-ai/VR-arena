@@ -26,35 +26,35 @@ class LunarBar(
         setupBarButtons()
     }
 
-    private fun setupBarButtons() {
+    fun setupBarButtons() {
         buttons.clear()
 
-        // Bar sits at bottom front: y = -0.35f, z = -1.2f
-        val zPos = -1.2f
-        val yPos = -0.38f
-        val btnW = 0.22f
-        val btnH = 0.12f
+        // Positioned comfortably in lower frontal view: y = -0.32f, z = -1.25f
+        val zPos = -1.25f
+        val yPos = -0.32f
+        val btnW = 0.24f
+        val btnH = 0.14f
 
         buttons.add(
-            AppButton("btn_home", "✦ Início", -0.36f, yPos, zPos, btnW, btnH) {
+            AppButton("btn_home", "✦ Início", -0.42f, yPos, zPos, btnW, btnH) {
                 onNavigate(LunarNavDestination.HOME)
             }
         )
 
         buttons.add(
-            AppButton("btn_browser", "🌐 Navegador", -0.12f, yPos, zPos, btnW, btnH) {
+            AppButton("btn_browser", "🌐 Navegador", -0.14f, yPos, zPos, btnW, btnH) {
                 onNavigate(LunarNavDestination.BROWSER)
             }
         )
 
         buttons.add(
-            AppButton("btn_recenter", "🎯 Centralizar", 0.12f, yPos, zPos, btnW, btnH) {
+            AppButton("btn_recenter", "🎯 Centralizar", 0.14f, yPos, zPos, btnW, btnH) {
                 onRecenter()
             }
         )
 
         buttons.add(
-            AppButton("btn_settings", "⚙ Ajustes", 0.36f, yPos, zPos, btnW, btnH) {
+            AppButton("btn_settings", "⚙ Ajustes", 0.42f, yPos, zPos, btnW, btnH) {
                 onNavigate(LunarNavDestination.SETTINGS)
             }
         )
