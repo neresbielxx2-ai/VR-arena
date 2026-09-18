@@ -28,21 +28,20 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     var invertPitch: Boolean = false
     var invertYaw: Boolean = false
 
-    // Raw sensor matrix (portrait space)
+    // Raw device rotation matrix (natural portrait)
     private val rawRotationMatrix = FloatArray(16)
     // Landscape remap
     private val landscapeMatrix = FloatArray(16)
-    // Yaw offset in radians for recentering
-    private var yawOffsetRadians = 0.0f
-    // Final camera view matrix
-    private val viewMatrix = FloatArray(16)
-    private val cameraWorldPose = FloatArray(16)
-    private var hasInitialCalibration = false
 
-    // Orientation angles [azimuth/yaw, pitch, roll]
-    private val orientationAngles = FloatArray(3)
+    // Center offset yaw calibration
+    private var yawOffsetDeg = 0.0f
+    private val orientationVals = FloatArray(3)
 
-    // Fallbacks
+    // Camera view matrix
+    private val cameraViewMatrix = FloatArray(16)
+    private var isCalibrated = false
+
+    // Sensor Fallbacks
     private val gravity = FloatArray(3)
     private val geomagnetic = FloatArray(3)
     private var hasGravity = false
@@ -51,8 +50,7 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     init {
         Matrix.setIdentityM(rawRotationMatrix, 0)
         Matrix.setIdentityM(landscapeMatrix, 0)
-        Matrix.setIdentityM(viewMatrix, 0)
-        Matrix.setIdentityM(cameraWorldPose, 0)
+        Matrix.setIdentityM(cameraViewMatrix, 0)
     }
 
     fun start() {
@@ -70,7 +68,7 @@ class HeadTracking(private val context: Context) : SensorEventListener {
             gameRot != null -> {
                 sensorManager.registerListener(this, gameRot, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.GAME_ROTATION_VECTOR
-                sensorStatusMessage = "3DoF: Giroscópio VR Ativo"
+                sensorStatusMessage = "3DoF: Giroscópio VR Estável"
             }
             rotVec != null -> {
                 sensorManager.registerListener(this, rotVec, SensorManager.SENSOR_DELAY_FASTEST)
@@ -102,11 +100,12 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun recenter() {
         synchronized(this) {
-            SensorManager.getOrientation(landscapeMatrix, orientationAngles)
-            yawOffsetRadians = orientationAngles[0]
-            hasInitialCalibration = true
+            SensorManager.getOrientation(landscapeMatrix, orientationVals)
+            // Save current yaw in degrees as the new center forward
+            yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
+            isCalibrated = true
         }
-        Log.d("LunarVR", "HeadTracking recentered. Yaw offset: $yawOffsetRadians")
+        Log.d("LunarVR", "HeadTracking recentered. Yaw offset: $yawOffsetDeg")
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -133,20 +132,19 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                 }
             }
 
-            // Remap for landscape orientation:
-            // Standard Android VR Landscape (phone horizontal in VR headset):
-            // Landscape X is Portrait -Y, Landscape Y is Portrait X
+            // Remap for landscape phone in headset (Surface.ROTATION_90 standard):
+            // Phone top points to the left in headset: AXIS_Y maps to world X, AXIS_MINUS_X maps to world Y
             SensorManager.remapCoordinateSystem(
                 rawRotationMatrix,
-                SensorManager.AXIS_MINUS_Y,
-                SensorManager.AXIS_X,
+                SensorManager.AXIS_Y,
+                SensorManager.AXIS_MINUS_X,
                 landscapeMatrix
             )
 
-            if (!hasInitialCalibration) {
-                SensorManager.getOrientation(landscapeMatrix, orientationAngles)
-                yawOffsetRadians = orientationAngles[0]
-                hasInitialCalibration = true
+            if (!isCalibrated) {
+                SensorManager.getOrientation(landscapeMatrix, orientationVals)
+                yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
+                isCalibrated = true
             }
         }
     }
@@ -155,24 +153,29 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun getHeadMatrix(outputMatrix: FloatArray) {
         synchronized(this) {
-            SensorManager.getOrientation(landscapeMatrix, orientationAngles)
+            SensorManager.getOrientation(landscapeMatrix, orientationVals)
 
-            // Current angles in degrees
-            val currentYaw = Math.toDegrees((orientationAngles[0] - yawOffsetRadians).toDouble()).toFloat()
-            val currentPitch = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
-            val currentRoll = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
+            // Absolute angles in degrees:
+            // orientationVals[0]: Azimuth / Yaw (rotation around Z axis, pointing up)
+            // orientationVals[1]: Pitch (rotation around X axis, pointing right)
+            // orientationVals[2]: Roll (rotation around Y axis, pointing forward)
+            val currentYaw = Math.toDegrees(orientationVals[0].toDouble()).toFloat() - yawOffsetDeg
+            val currentPitch = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
+            val currentRoll = Math.toDegrees(orientationVals[2].toDouble()).toFloat()
 
-            val yawSign = if (invertYaw) 1.0f else -1.0f
-            val pitchSign = if (invertPitch) 1.0f else -1.0f
+            val yawSign = if (invertYaw) -1.0f else 1.0f
+            val pitchSign = if (invertPitch) -1.0f else 1.0f
 
-            // Build camera view matrix from Euler angles:
-            // First Pitch (look up/down around X axis), then Yaw (look left/right around Y axis), then Roll
-            Matrix.setIdentityM(viewMatrix, 0)
-            Matrix.rotateM(viewMatrix, 0, currentRoll, 0f, 0f, 1f)
-            Matrix.rotateM(viewMatrix, 0, pitchSign * currentPitch, 1f, 0f, 0f)
-            Matrix.rotateM(viewMatrix, 0, yawSign * currentYaw, 0f, 1f, 0f)
+            // Clean Camera View Matrix:
+            // In OpenGL View space:
+            // Looking LEFT turns the camera view to the right (+Yaw)
+            // Looking UP tilts the camera view down (+Pitch)
+            Matrix.setIdentityM(cameraViewMatrix, 0)
+            Matrix.rotateM(cameraViewMatrix, 0, currentRoll, 0f, 0f, 1f)
+            Matrix.rotateM(cameraViewMatrix, 0, pitchSign * currentPitch, 1f, 0f, 0f)
+            Matrix.rotateM(cameraViewMatrix, 0, yawSign * currentYaw, 0f, 1f, 0f)
 
-            System.arraycopy(viewMatrix, 0, outputMatrix, 0, 16)
+            System.arraycopy(cameraViewMatrix, 0, outputMatrix, 0, 16)
         }
     }
 }
