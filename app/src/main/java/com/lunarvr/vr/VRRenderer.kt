@@ -146,13 +146,25 @@ class VRRenderer(
             // Read sensor orientation (Camera View Matrix)
             vrSession.headTracking.getHeadMatrix(headViewMatrix)
 
-            // Calculate Ray: If hand is detected, use hand ray. Otherwise, use Gaze Pointer (center of head)
+            // Transform Camera-relative Ray into World Space for interaction with 3D panels
+            // Camera Forward in World Space is row 2 of View Matrix negated:
             val ray = if (currentPose.isDetected && settingsPanel.handTrackingEnabled) {
-                fingerRay.calculateRay(currentPose)
+                val camRay = fingerRay.calculateRay(currentPose)
+                if (camRay != null) {
+                    // Origin in camera space transformed to world space:
+                    // In camera space: (ox, oy, oz). Since view matrix V transforms world -> camera,
+                    // camera position in world is (R^T * -T). Since translation is pure rotation here:
+                    val worldOriginX = headViewMatrix[0] * camRay.originX + headViewMatrix[1] * camRay.originY + headViewMatrix[2] * camRay.originZ
+                    val worldOriginY = headViewMatrix[4] * camRay.originX + headViewMatrix[5] * camRay.originY + headViewMatrix[6] * camRay.originZ
+                    val worldOriginZ = headViewMatrix[8] * camRay.originX + headViewMatrix[9] * camRay.originY + headViewMatrix[10] * camRay.originZ
+
+                    val worldDirX = headViewMatrix[0] * camRay.dirX + headViewMatrix[1] * camRay.dirY + headViewMatrix[2] * camRay.dirZ
+                    val worldDirY = headViewMatrix[4] * camRay.dirX + headViewMatrix[5] * camRay.dirY + headViewMatrix[6] * camRay.dirZ
+                    val worldDirZ = headViewMatrix[8] * camRay.dirX + headViewMatrix[9] * camRay.dirY + headViewMatrix[10] * camRay.dirZ
+                    Ray3D(worldOriginX, worldOriginY, worldOriginZ, worldDirX, worldDirY, worldDirZ)
+                } else null
             } else {
-                // Forward Gaze pointer ray along the head forward vector
-                // headViewMatrix rotates world points into camera space. The camera looks down negative Z.
-                // In world space, camera forward direction is row 2 of view matrix negated:
+                // Forward Gaze pointer ray along the head forward vector in world space:
                 val fwdX = -headViewMatrix[2]
                 val fwdY = -headViewMatrix[6]
                 val fwdZ = -headViewMatrix[10]
@@ -184,7 +196,7 @@ class VRRenderer(
                 vrSession.stereoCamera.getProjectionMatrix(), 0,
                 vrSession.stereoCamera.getLeftEyeViewMatrix(), 0
             )
-            renderScene(viewProjectionMatrix, ray)
+            renderScene(viewProjectionMatrix, vrSession.stereoCamera.getProjectionMatrix(), ray)
 
             // Right Eye Render
             GLES20.glViewport(halfWidth, 0, halfWidth, screenHeight)
@@ -193,19 +205,19 @@ class VRRenderer(
                 vrSession.stereoCamera.getProjectionMatrix(), 0,
                 vrSession.stereoCamera.getRightEyeViewMatrix(), 0
             )
-            renderScene(viewProjectionMatrix, ray)
+            renderScene(viewProjectionMatrix, vrSession.stereoCamera.getProjectionMatrix(), ray)
         } catch (e: Throwable) {
             Log.e("LunarVR", "Error in onDrawFrame", e)
         }
     }
 
-    private fun renderScene(vpMatrix: FloatArray, ray: Ray3D?) {
-        // Draw Starfield (attached to view)
+    private fun renderScene(vpMatrix: FloatArray, projMatrix: FloatArray, ray: Ray3D?) {
+        // Draw Starfield (World space)
         drawStarfield(vpMatrix)
 
         if (panelProgram == 0) return
 
-        // Draw Panels
+        // Draw Panels in World space
         GLES20.glUseProgram(panelProgram)
 
         // Floating Lunar Bar
@@ -227,22 +239,23 @@ class VRRenderer(
             keyboardVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
 
-        // Hand Visualization & Ray
+        // Hand Visualization & Ray: Rendered in Camera view so hands are visible right in front of user
         if (settingsPanel.handTrackingEnabled && currentPose.isDetected) {
+            val camRay = fingerRay.calculateRay(currentPose)
             handRenderer.renderHand(
-                vpMatrix,
+                projMatrix,
                 currentPose,
-                ray,
+                camRay,
                 settingsPanel.showFingerRay,
                 settingsPanel.markerRadius
             )
         } else {
-            // Draw Gaze Reticle when hand is not in front
-            drawReticle(vpMatrix)
+            // Draw Gaze Reticle in center view when hand is not visible
+            drawReticle(projMatrix)
         }
     }
 
-    private fun drawReticle(vpMatrix: FloatArray) {
+    private fun drawReticle(projMatrix: FloatArray) {
         val rBuf = reticleBuffer ?: return
         if (reticleProgram == 0) return
 
@@ -251,16 +264,15 @@ class VRRenderer(
         val color = GLES20.glGetUniformLocation(reticleProgram, "vColor")
         val pos = GLES20.glGetAttribLocation(reticleProgram, "vPosition")
 
-        // Draw a comfortable small center reticle circle at Z = -1.2
+        // Draw center reticle in camera view at Z = -1.0
         val model = FloatArray(16)
         Matrix.setIdentityM(model, 0)
-        Matrix.translateM(model, 0, 0f, 0f, -1.2f)
+        Matrix.translateM(model, 0, 0f, 0f, -1.0f)
 
         val mvpMatrix = FloatArray(16)
-        Matrix.multiplyMM(mvpMatrix, 0, vpMatrix, 0, model, 0)
+        Matrix.multiplyMM(mvpMatrix, 0, projMatrix, 0, model, 0)
 
         GLES20.glUniformMatrix4fv(mvp, 1, false, mvpMatrix, 0)
-        // High-visibility lunar cyan
         GLES20.glUniform4f(color, 0.0f, 0.95f, 1.0f, 0.85f)
 
         rBuf.position(0)
@@ -639,7 +651,7 @@ class VRRenderer(
     }
 
     private fun initPanels() {
-        // Lunar Bar: comfortably positioned at eye level
+        // Lunar Bar: eye-level central lower field of view
         barPanel = VRPanel("lunar_bar", 0.0f, -0.15f, -1.4f, 1.15f, 0.30f, 1024, 256).also { it.initGL() }
 
         // Browser & URL Panels: centered right in front of user

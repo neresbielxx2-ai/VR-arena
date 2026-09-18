@@ -65,7 +65,7 @@ class HandRenderer {
         }
     }
 
-    fun renderHand(vpMatrix: FloatArray, pose: HandPose, ray: Ray3D?, showRayLine: Boolean, markerRadius: Float) {
+    fun renderHand(projectionMatrix: FloatArray, pose: HandPose, ray: Ray3D?, showRayLine: Boolean, markerRadius: Float) {
         if (!pose.isDetected || lineProgram == 0) return
 
         GLES20.glUseProgram(pointProgram)
@@ -74,7 +74,8 @@ class HandRenderer {
         val pointSizeHandle = GLES20.glGetUniformLocation(pointProgram, "uPointSize")
         val posHandle = GLES20.glGetAttribLocation(pointProgram, "vPosition")
 
-        GLES20.glUniformMatrix4fv(mvpHandle, 1, false, vpMatrix, 0)
+        // Render directly in camera screen space so the hand is attached to user perspective
+        GLES20.glUniformMatrix4fv(mvpHandle, 1, false, projectionMatrix, 0)
 
         // Draw Joints
         val landmarks = if (pose.allLandmarks.isNotEmpty()) pose.allLandmarks else listOf(
@@ -85,9 +86,10 @@ class HandRenderer {
         var idx = 0
         for (lm in landmarks) {
             if (idx + 3 <= jointCoords.size) {
-                jointCoords[idx] = (lm.x - 0.5f) * 2.0f
-                jointCoords[idx + 1] = -(lm.y - 0.5f) * 2.0f
-                jointCoords[idx + 2] = -0.5f + lm.z
+                // In Camera View Coordinates: X [-0.6, 0.6], Y [-0.5, 0.5], Z ~ -0.7m
+                jointCoords[idx] = (lm.x - 0.5f) * 1.4f
+                jointCoords[idx + 1] = -(lm.y - 0.5f) * 1.2f
+                jointCoords[idx + 2] = -0.7f + lm.z
                 idx += 3
             }
         }
@@ -109,15 +111,15 @@ class HandRenderer {
         GLES20.glUniform1f(pointSizeHandle, 24.0f)
         GLES20.glDrawArrays(GLES20.GL_POINTS, if (landmarks.size > 8) 8 else 3, 1)
 
-        // Draw Ray Line
+        // Draw Ray Line shooting from fingertip forward towards the UI
         if (showRayLine && ray != null) {
             GLES20.glLineWidth(4.0f)
             lineCoords[0] = ray.originX
             lineCoords[1] = ray.originY
             lineCoords[2] = ray.originZ
-            lineCoords[3] = ray.originX + ray.dirX * 3.0f
-            lineCoords[4] = ray.originY + ray.dirY * 3.0f
-            lineCoords[5] = ray.originZ + ray.dirZ * 3.0f
+            lineCoords[3] = ray.originX + ray.dirX * 2.5f
+            lineCoords[4] = ray.originY + ray.dirY * 2.5f
+            lineCoords[5] = ray.originZ + ray.dirZ * 2.5f
 
             lineBuffer.clear()
             lineBuffer.put(lineCoords)
@@ -125,7 +127,7 @@ class HandRenderer {
 
             GLES20.glVertexAttribPointer(posHandle, 3, GLES20.GL_FLOAT, false, 0, lineBuffer)
             // Glowing translucent cyan ray
-            GLES20.glUniform4f(colorHandle, 0.3f, 0.95f, 1.0f, 0.7f)
+            GLES20.glUniform4f(colorHandle, 0.3f, 0.95f, 1.0f, 0.85f)
             GLES20.glDrawArrays(GLES20.GL_LINES, 0, 2)
         }
 

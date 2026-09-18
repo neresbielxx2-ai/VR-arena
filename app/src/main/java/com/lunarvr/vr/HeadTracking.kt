@@ -30,10 +30,11 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     private val rawRotationMatrix = FloatArray(16)
     private val landscapeRotationMatrix = FloatArray(16)
-    private val centerOffsetMatrix = FloatArray(16)
+    private val initialRotationMatrix = FloatArray(16)
     private val finalHeadViewMatrix = FloatArray(16)
+    private var hasCalibratedBaseline = false
 
-    // Fallback complementary filter variables
+    // Fallback variables
     private val gravity = FloatArray(3)
     private val geomagnetic = FloatArray(3)
     private var hasGravity = false
@@ -42,7 +43,7 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     init {
         Matrix.setIdentityM(rawRotationMatrix, 0)
         Matrix.setIdentityM(landscapeRotationMatrix, 0)
-        Matrix.setIdentityM(centerOffsetMatrix, 0)
+        Matrix.setIdentityM(initialRotationMatrix, 0)
         Matrix.setIdentityM(finalHeadViewMatrix, 0)
     }
 
@@ -59,26 +60,25 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
         when {
             gameRotSensor != null -> {
-                // Game Rotation Vector is preferred for mobile VR (no magnetic field interference/jump)
                 sensorManager.registerListener(this, gameRotSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.GAME_ROTATION_VECTOR
-                sensorStatusMessage = "3DoF: Giroscópio + Acelerômetro (VR Modo Estável)"
+                sensorStatusMessage = "3DoF: Giroscópio + Acelerômetro (Estável)"
             }
             rotVectorSensor != null -> {
                 sensorManager.registerListener(this, rotVectorSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ROTATION_VECTOR
-                sensorStatusMessage = "3DoF: Sensor Rotação Absoluto (Alta precisão)"
+                sensorStatusMessage = "3DoF: Sensor Rotação Absoluto"
             }
             gyroSensor != null && accelSensor != null -> {
                 sensorManager.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ACCEL_GYRO_FUSION
-                sensorStatusMessage = "3DoF: Fusão Giroscópio + Acelerômetro"
+                sensorStatusMessage = "3DoF: Fusão Giro + Acelerômetro"
             }
             accelSensor != null -> {
                 sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_FASTEST)
                 activeSensorType = TrackingSensorType.ACCELEROMETER_ONLY
-                sensorStatusMessage = "3DoF Reduzido: Apenas acelerômetro"
+                sensorStatusMessage = "3DoF: Acelerômetro"
             }
             else -> {
                 activeSensorType = TrackingSensorType.NONE
@@ -94,8 +94,8 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun recenter() {
         synchronized(this) {
-            // Store current landscape world orientation as the zero baseline
-            System.arraycopy(landscapeRotationMatrix, 0, centerOffsetMatrix, 0, 16)
+            System.arraycopy(landscapeRotationMatrix, 0, initialRotationMatrix, 0, 16)
+            hasCalibratedBaseline = true
         }
         Log.d("LunarVR", "HeadTracking recentered")
     }
@@ -124,14 +124,19 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                 }
             }
 
-            // Standard Android VR Landscape coordinate remapping:
-            // Device natural portrait X (right) becomes -Y, and Y (up) becomes X (right) in landscape
+            // Remap for landscape orientation (phone held horizontally in headset)
+            // Portrait X -> Landscape -Y, Portrait Y -> Landscape X
             SensorManager.remapCoordinateSystem(
                 rawRotationMatrix,
                 SensorManager.AXIS_Y,
                 SensorManager.AXIS_MINUS_X,
                 landscapeRotationMatrix
             )
+
+            if (!hasCalibratedBaseline) {
+                System.arraycopy(landscapeRotationMatrix, 0, initialRotationMatrix, 0, 16)
+                hasCalibratedBaseline = true
+            }
         }
     }
 
@@ -139,17 +144,16 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun getHeadMatrix(outputMatrix: FloatArray) {
         synchronized(this) {
-            // Compute relative rotation: R_rel = (R_center)^T * R_current
-            val centerTransposed = FloatArray(16)
-            Matrix.transposeM(centerTransposed, 0, centerOffsetMatrix, 0)
+            // Compute relative device orientation matrix R_rel = (R_init)^T * R_current
+            val initTransposed = FloatArray(16)
+            Matrix.transposeM(initTransposed, 0, initialRotationMatrix, 0)
 
-            val relativeRotation = FloatArray(16)
-            Matrix.multiplyMM(relativeRotation, 0, centerTransposed, 0, landscapeRotationMatrix, 0)
+            val relativeOrientation = FloatArray(16)
+            Matrix.multiplyMM(relativeOrientation, 0, initTransposed, 0, landscapeRotationMatrix, 0)
 
-            // Convert World-to-Device rotation into Camera View Matrix (invert/transpose of camera pose)
-            Matrix.transposeM(finalHeadViewMatrix, 0, relativeRotation, 0)
+            // View Matrix is the inverse (transpose) of the camera's orientation in world space
+            Matrix.transposeM(finalHeadViewMatrix, 0, relativeOrientation, 0)
 
-            // Invert axes if user toggled in settings
             if (invertPitch || invertYaw) {
                 val scaleX = if (invertYaw) -1.0f else 1.0f
                 val scaleY = if (invertPitch) -1.0f else 1.0f
