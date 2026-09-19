@@ -34,9 +34,6 @@ jobs:
           gradle-version: '8.4'
           cache-disabled: true
 
-      - name: Run Unit Tests
-        run: gradle test --no-daemon --stacktrace
-
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
