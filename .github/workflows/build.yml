@@ -39,20 +39,19 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee build_debug.log || {
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build_debug.log || {
             echo "==== GRADLE ERROR SUMMARY ===="
             grep -E -C 3 "e: |error:|FAILED" build_debug.log | head -n 50
             exit 1
           }
 
       - name: Build Release APK (Unsigned)
-        run: gradle assembleRelease --no-daemon --stacktrace || true
+        run: ./gradlew assembleRelease --no-daemon --stacktrace || true
 
       - name: Copy & Prepare APK Artifacts
         run: |
           mkdir -p output-apks
-          find app/build/outputs/ -type f || true
-          find app/build/outputs/ -name "*.apk" -exec cp -v {} output-apks/ \;
+          find . -name "*.apk" -exec cp -v {} output-apks/ \; || true
           ls -la output-apks/
 
       - name: Upload LunarVR APK Artifact
