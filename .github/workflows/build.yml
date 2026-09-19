@@ -51,7 +51,8 @@ jobs:
       - name: Copy & Prepare APK Artifacts
         run: |
           mkdir -p output-apks
-          find app/build/outputs/apk -name "*.apk" -exec cp {} output-apks/ \;
+          find app/build/outputs/ -type f || true
+          find app/build/outputs/ -name "*.apk" -exec cp -v {} output-apks/ \;
           ls -la output-apks/
 
       - name: Upload LunarVR APK Artifact
