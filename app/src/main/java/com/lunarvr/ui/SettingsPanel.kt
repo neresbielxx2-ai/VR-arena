@@ -6,6 +6,7 @@ import com.lunarvr.vr.VRSession
 
 class SettingsPanel(
     private val vrSession: VRSession,
+    private val lunarBar: LunarBar,
     val onSettingChanged: () -> Unit
 ) {
     var isVisible: Boolean = false
@@ -41,9 +42,9 @@ class SettingsPanel(
         buttons.clear()
 
         val zPos = -1.30f
-        val startY = centerY + 0.12f
+        val startY = centerY + 0.16f
         val btnW = 0.46f
-        val btnH = 0.09f
+        val btnH = 0.08f
         val colLeft = centerX - 0.25f
         val colRight = centerX + 0.25f
 
@@ -64,9 +65,30 @@ class SettingsPanel(
             }
         )
 
-        // Row 2: Invert Axis
+        // Row 2: Style of Lunar Bar (Meta Quest vs Lunar Cosmic vs Cyberpunk) & Color Theme
         buttons.add(
-            AppButton("btn_inv_x", "Inverter Eixo X: ${if (invertX) "SIM" else "NÃO"}", colLeft, startY - 0.12f, zPos, btnW, btnH) {
+            AppButton("btn_bar_style", "Estilo Barra: ${lunarBar.currentStyle.displayName}", colLeft, startY - 0.10f, zPos, btnW, btnH) {
+                val styles = BarStyle.values()
+                val nextIdx = (lunarBar.currentStyle.ordinal + 1) % styles.size
+                lunarBar.currentStyle = styles[nextIdx]
+                setupButtons()
+                onSettingChanged()
+            }
+        )
+
+        buttons.add(
+            AppButton("btn_bar_color", "Cor Barra: ${lunarBar.currentColorTheme.displayName}", colRight, startY - 0.10f, zPos, btnW, btnH) {
+                val themes = BarColorTheme.values()
+                val nextIdx = (lunarBar.currentColorTheme.ordinal + 1) % themes.size
+                lunarBar.currentColorTheme = themes[nextIdx]
+                setupButtons()
+                onSettingChanged()
+            }
+        )
+
+        // Row 3: Invert Axis
+        buttons.add(
+            AppButton("btn_inv_x", "Inverter Eixo X: ${if (invertX) "SIM" else "NÃO"}", colLeft, startY - 0.20f, zPos, btnW, btnH) {
                 invertX = !invertX
                 vrSession.headTracking.invertYaw = invertX
                 setupButtons()
@@ -75,7 +97,7 @@ class SettingsPanel(
         )
 
         buttons.add(
-            AppButton("btn_inv_y", "Inverter Eixo Y: ${if (invertY) "SIM" else "NÃO"}", colRight, startY - 0.12f, zPos, btnW, btnH) {
+            AppButton("btn_inv_y", "Inverter Eixo Y: ${if (invertY) "SIM" else "NÃO"}", colRight, startY - 0.20f, zPos, btnW, btnH) {
                 invertY = !invertY
                 vrSession.headTracking.invertPitch = invertY
                 setupButtons()
@@ -83,9 +105,9 @@ class SettingsPanel(
             }
         )
 
-        // Row 3: Performance mode & Stereo Mirror
+        // Row 4: Performance mode & Close
         buttons.add(
-            AppButton("btn_eco", "Modo Eco: ${if (economicMode) "LIGADO" else "DESLIG"}", colLeft, startY - 0.24f, zPos, btnW, btnH) {
+            AppButton("btn_eco", "Modo Eco: ${if (economicMode) "LIGADO" else "DESLIG"}", colLeft, startY - 0.30f, zPos, btnW, btnH) {
                 economicMode = !economicMode
                 vrSession.performanceManager.applyLevel(
                     if (economicMode) PerformanceLevel.ECONOMIC else PerformanceLevel.QUALITY
@@ -96,7 +118,7 @@ class SettingsPanel(
         )
 
         buttons.add(
-            AppButton("btn_close_settings", "Fechar Painel", colRight, startY - 0.24f, zPos, btnW, btnH) {
+            AppButton("btn_close_settings", "✕ Fechar Ajustes", colRight, startY - 0.30f, zPos, btnW, btnH) {
                 isVisible = false
                 onSettingChanged()
             }
@@ -105,10 +127,10 @@ class SettingsPanel(
 
     fun getSystemInfoText(report: HardwareReport): String {
         return """
-            LUNAR VR v1.0.3
+            LUNAR VR v1.0.4  |  Meta Quest Experience
             Dispositivo: ${report.deviceModel}  |  Android: ${report.osVersion}
             Memória RAM: ${report.totalRamMb} MB  |  ${vrSession.performanceManager.currentLevel.name} (${vrSession.performanceManager.targetFps} FPS)
-            Tempo de Resposta do Clique: ${getDwellTimeMs() / 1000f}s
+            Tempo de Clique Mira: ${getDwellTimeMs() / 1000f}s  |  Estilo: ${lunarBar.currentStyle.displayName} (${lunarBar.currentColorTheme.displayName})
         """.trimIndent()
     }
 }

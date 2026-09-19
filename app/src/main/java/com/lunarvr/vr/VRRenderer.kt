@@ -55,7 +55,7 @@ class VRRenderer(
     lateinit var settingsPanel: SettingsPanel
 
     init {
-        settingsPanel = SettingsPanel(vrSession) {
+        settingsPanel = SettingsPanel(vrSession, lunarBar) {
             interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
             refreshInteractiveElements()
         }
@@ -72,7 +72,7 @@ class VRRenderer(
         onBackClick = { browserView?.goBack() },
         onForwardClick = { browserView?.goForward() },
         onRefreshClick = { browserView?.reload() },
-        onHomeClick = { browserView?.loadUrl("https://www.google.com") },
+        onHomeClick = { browserView?.loadUrl("https://html.duckduckgo.com/html/") },
         onResizeClick = { cycleBrowserScale() }
     )
 
@@ -591,7 +591,7 @@ class VRRenderer(
         textInputManager.bindTarget(object : TextInputManager.TextInputTarget {
             override fun onTextUpdated(text: String) {
                 urlBar.displayUrl = text
-                urlBar.setupButtons(urlPanel?.x ?: 0f, urlPanel?.y ?: 0.45f)
+                urlBar.setupButtons(urlPanel?.x ?: 0f, urlPanel?.y ?: 0.58f)
             }
 
             override fun onInputSubmitted(text: String) {
@@ -681,15 +681,25 @@ class VRRenderer(
         barPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Meta Quest inspired floating dock pill with sleek Cosmic Amethyst border
+            val theme = lunarBar.currentColorTheme
+            val style = lunarBar.currentStyle
+
+            // Custom Shell according to chosen Style & Theme
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F4121626")
-            canvas.drawRoundRect(RectF(14f, 14f, 1010f, 206f), 38f, 38f, paint)
+            paint.color = Color.parseColor(theme.bgHex)
+
+            val pillCorner = when (style) {
+                BarStyle.META_QUEST -> 50f // Ultra-smooth rounded Meta Quest 3S aesthetic
+                BarStyle.LUNAR_COSMIC -> 32f // Angular cosmic aesthetic
+                BarStyle.MINIMAL_CYBER -> 12f // Sharp cybernetic aesthetic
+            }
+            val shellRect = RectF(14f, 14f, 1010f, 206f)
+            canvas.drawRoundRect(shellRect, pillCorner, pillCorner, paint)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#6366F1")
-            canvas.drawRoundRect(RectF(14f, 14f, 1010f, 206f), 38f, 38f, paint)
+            paint.strokeWidth = if (style == BarStyle.META_QUEST) 2.0f else 2.8f
+            paint.color = Color.parseColor(theme.borderHex)
+            canvas.drawRoundRect(shellRect, pillCorner, pillCorner, paint)
 
             // Header status line: Title, Status, Battery Icon, Time
             paint.style = Paint.Style.FILL
@@ -698,7 +708,7 @@ class VRRenderer(
             val statusTxt = if (notificationMessage != null && System.currentTimeMillis() < notificationEndTime) {
                 "✨ ${notificationMessage}"
             } else {
-                "LUNAR OS  |  ${lunarBar.vrStatus}"
+                "LUNAR OS  |  ${lunarBar.vrStatus}  •  ${style.displayName}"
             }
             canvas.drawText(statusTxt, 36f, 46f, paint)
             canvas.drawText(lunarBar.currentTimeString, 910f, 46f, paint)
@@ -725,6 +735,13 @@ class VRRenderer(
                 val bx = 26f + i * 196f
                 val (accentBorder, accentHoverBg) = accentColors[i % accentColors.size]
 
+                // Card corner radius matches bar style
+                val cardCorner = when (style) {
+                    BarStyle.META_QUEST -> 30f // Meta Quest rounded card pill
+                    BarStyle.LUNAR_COSMIC -> 20f
+                    BarStyle.MINIMAL_CYBER -> 8f
+                }
+
                 // Rounded rect card
                 paint.style = Paint.Style.FILL
                 if (btn.isHovered) {
@@ -732,12 +749,12 @@ class VRRenderer(
                 } else {
                     paint.color = Color.parseColor("#171F33")
                 }
-                canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), 22f, 22f, paint)
+                canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), cardCorner, cardCorner, paint)
 
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = if (btn.isHovered) 3.5f else 1.8f
                 paint.color = if (btn.isHovered) Color.parseColor(accentBorder) else Color.parseColor("#2E3A52")
-                canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), 22f, 22f, paint)
+                canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), cardCorner, cardCorner, paint)
 
                 // Hover progress bar with distinct category accent
                 if (btn.isHovered && btn.hoverProgress > 0f) {

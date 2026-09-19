@@ -1,8 +1,8 @@
 package com.lunarvr.browser
 
 data class BrowserState(
-    val currentUrl: String = "https://www.google.com",
-    val title: String = "Google",
+    val currentUrl: String = "https://html.duckduckgo.com/html/",
+    val title: String = "DuckDuckGo VR",
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val isLoading: Boolean = false,
@@ -46,7 +46,7 @@ class BrowserController {
         return when {
             trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
             trimmed.contains(".") && !trimmed.contains(" ") -> "https://$trimmed"
-            else -> "https://www.google.com/search?q=" + java.net.URLEncoder.encode(trimmed, "UTF-8")
+            else -> "https://duckduckgo.com/?q=" + java.net.URLEncoder.encode(trimmed, "UTF-8")
         }
     }
 }

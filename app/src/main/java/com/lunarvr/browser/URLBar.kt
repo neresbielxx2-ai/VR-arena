@@ -10,7 +10,7 @@ class URLBar(
     private val onHomeClick: () -> Unit,
     private val onResizeClick: () -> Unit
 ) {
-    var displayUrl: String = "https://www.google.com"
+    var displayUrl: String = "https://html.duckduckgo.com/html/"
     var scaleName: String = "1.0x"
 
     val buttons = mutableListOf<AppButton>()

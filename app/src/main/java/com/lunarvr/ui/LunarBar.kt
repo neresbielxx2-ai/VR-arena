@@ -1,5 +1,25 @@
 package com.lunarvr.ui
 
+enum class BarStyle(val displayName: String) {
+    META_QUEST("Meta Quest 3S"),
+    LUNAR_COSMIC("Lunar Cósmico"),
+    MINIMAL_CYBER("Cyberpunk")
+}
+
+enum class BarColorTheme(
+    val displayName: String,
+    val bgHex: String,
+    val borderHex: String,
+    val primaryAccent: String,
+    val secondaryAccent: String
+) {
+    NEBULA_PURPLE("Ametista Cósmico", "#F5121626", "#6366F1", "#A855F7", "#818CF8"),
+    CYBER_EMERALD("Esmeralda Lunar", "#F50C1B17", "#10B981", "#34D399", "#059669"),
+    SOLAR_AMBER("Âmbar Solar", "#F51C170E", "#F59E0B", "#FBBF24", "#D97706"),
+    NEON_ROSE("Neon Sunset", "#F51F101A", "#EC4899", "#F472B6", "#DB2777"),
+    DEEP_OCEAN("Oceano Glacial", "#F50E1826", "#0284C7", "#38BDF8", "#0369A1")
+}
+
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -19,6 +39,9 @@ class LunarBar(
         private set
     var batteryPercentage: Int = 100
     var vrStatus: String = "3DoF Ativo"
+
+    var currentStyle: BarStyle = BarStyle.META_QUEST
+    var currentColorTheme: BarColorTheme = BarColorTheme.NEBULA_PURPLE
 
     // World position of the bar in spherical coordinates: yawDeg, height Y, distance Z
     var yawDeg: Float = 0.0f
