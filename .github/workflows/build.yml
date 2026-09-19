@@ -37,19 +37,6 @@ jobs:
       - name: Build Debug APK
         run: |
           gradle assembleDebug --no-daemon 2>&1 | tee /tmp/build.log || true
-          ERR_MSG=$(grep -E -m 1 "FAILURE:|e: /|[Ee]rror:" /tmp/build.log || true)
-          echo "::error title=BuildFailedDetails::$ERR_MSG"
-          tail -n 60 /tmp/build.log
-
-      - name: Copy & Prepare APK Artifacts
-        run: |
-          mkdir -p output-apks
-          find app/build/outputs/ -name "*.apk" -exec cp -v {} output-apks/ \; || true
-          ls -la output-apks/
-
-      - name: Upload LunarVR APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: LunarVR-APK
-          path: output-apks/*.apk
-          retention-days: 14
+          CAUSE=$(grep -A 8 "* What went wrong:" /tmp/build.log | tr '\n' ' ' || true)
+          echo "::error title=Cause::$CAUSE"
+          exit 1
