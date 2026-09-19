@@ -10,6 +10,10 @@ class SettingsPanel(
 ) {
     var isVisible: Boolean = false
 
+    // Dwell Time Options: 1.0s, 1.5s, 2.0s, 2.5s
+    private val dwellSpeeds = listOf(1000L, 1500L, 2000L, 2500L)
+    var currentDwellIndex = 2 // Default: 2000L (2.0s)
+
     // VR Settings
     var vrQuality: String = "Alta"
     var uiDistance: Float = 1.35f
@@ -29,6 +33,8 @@ class SettingsPanel(
         setupButtons(0f, 0.10f)
     }
 
+    fun getDwellTimeMs(): Long = dwellSpeeds[currentDwellIndex]
+
     fun setupButtons(centerX: Float = currentCenterX, centerY: Float = currentCenterY) {
         currentCenterX = centerX
         currentCenterY = centerY
@@ -41,13 +47,12 @@ class SettingsPanel(
         val colLeft = centerX - 0.25f
         val colRight = centerX + 0.25f
 
-        // Row 1: Mode toggles
+        val dwellSec = dwellSpeeds[currentDwellIndex] / 1000f
+
+        // Row 1: Click response dwell speed & Recenter
         buttons.add(
-            AppButton("btn_eco", "Modo Eco: ${if (economicMode) "LIGADO" else "DESLIG"}", colLeft, startY, zPos, btnW, btnH) {
-                economicMode = !economicMode
-                vrSession.performanceManager.applyLevel(
-                    if (economicMode) PerformanceLevel.ECONOMIC else PerformanceLevel.QUALITY
-                )
+            AppButton("btn_dwell_speed", "Tempo Clique Mira: ${dwellSec}s", colLeft, startY, zPos, btnW, btnH) {
+                currentDwellIndex = (currentDwellIndex + 1) % dwellSpeeds.size
                 setupButtons()
                 onSettingChanged()
             }
@@ -78,11 +83,13 @@ class SettingsPanel(
             }
         )
 
-        // Row 3: Stereo Mirror
+        // Row 3: Performance mode & Stereo Mirror
         buttons.add(
-            AppButton("btn_mirror", "Espelhar Olhos: ${if (mirrorLeftRight) "SIM" else "NÃO"}", colLeft, startY - 0.24f, zPos, btnW, btnH) {
-                mirrorLeftRight = !mirrorLeftRight
-                vrSession.stereoCamera.mirrorLeftRight = mirrorLeftRight
+            AppButton("btn_eco", "Modo Eco: ${if (economicMode) "LIGADO" else "DESLIG"}", colLeft, startY - 0.24f, zPos, btnW, btnH) {
+                economicMode = !economicMode
+                vrSession.performanceManager.applyLevel(
+                    if (economicMode) PerformanceLevel.ECONOMIC else PerformanceLevel.QUALITY
+                )
                 setupButtons()
                 onSettingChanged()
             }
@@ -98,10 +105,10 @@ class SettingsPanel(
 
     fun getSystemInfoText(report: HardwareReport): String {
         return """
-            LUNAR VR v1.0.2
+            LUNAR VR v1.0.3
             Dispositivo: ${report.deviceModel}  |  Android: ${report.osVersion}
             Memória RAM: ${report.totalRamMb} MB  |  ${vrSession.performanceManager.currentLevel.name} (${vrSession.performanceManager.targetFps} FPS)
-            Giroscópio: ${if (report.hasGyroscope) "Presente (VR 3DoF)" else "Ausente"}
+            Tempo de Resposta do Clique: ${getDwellTimeMs() / 1000f}s
         """.trimIndent()
     }
 }

@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -13,8 +15,8 @@ class BrowserView(private val context: Context, private val controller: BrowserC
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
-    private val width = 1024
-    private val height = 768
+    val width = 1024
+    val height = 768
     private val webViewBitmap: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     private val bitmapLock = Any()
     @Volatile private var isDirty: Boolean = true
@@ -28,6 +30,7 @@ class BrowserView(private val context: Context, private val controller: BrowserC
                     domStorageEnabled = true
                     useWideViewPort = true
                     loadWithOverviewMode = true
+                    userAgentString = "Mozilla/5.0 (Linux; Android 13; VR) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                 }
                 wv.layout(0, 0, width, height)
 
@@ -59,8 +62,27 @@ class BrowserView(private val context: Context, private val controller: BrowserC
                 wv.loadUrl(controller.currentState.currentUrl)
                 webView = wv
             } catch (e: Exception) {
-                // In case WebView is missing or fails on some devices
+                // Ignore fallback
             }
+        }
+    }
+
+    fun dispatchClick(normalizedX: Float, normalizedY: Float) {
+        val px = (normalizedX * width).coerceIn(0f, width.toFloat() - 1f)
+        val py = (normalizedY * height).coerceIn(0f, height.toFloat() - 1f)
+
+        mainHandler.post {
+            try {
+                val wv = webView ?: return@post
+                val now = SystemClock.uptimeMillis()
+                val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, px, py, 0)
+                val up = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, px, py, 0)
+                wv.dispatchTouchEvent(down)
+                wv.dispatchTouchEvent(up)
+                down.recycle()
+                up.recycle()
+                isDirty = true
+            } catch (_: Exception) {}
         }
     }
 

@@ -39,9 +39,9 @@ class InteractionManager {
     private var currentlyHovered: InteractableElement? = null
     private var hoverStartTime: Long = 0
 
-    // Standard buttons dwell 1.5s, while keyboard keys and grab handles dwell 2.0s as requested
-    var standardDwellTimeMs: Long = 1500L
-    var keyboardDwellTimeMs: Long = 2000L
+    // Customizable Dwell Speed in Settings:
+    // User configurable dwell time in milliseconds (default 2000ms = 2.0s)
+    var userDwellTimeMs: Long = 2000L
 
     var lastHitElementId: String? = null
         private set
@@ -70,11 +70,8 @@ class InteractionManager {
     }
 
     private fun getRequiredDwellTime(elem: InteractableElement): Long {
-        return if (elem.id.startsWith("key_") || elem.id.startsWith("grab_")) {
-            keyboardDwellTimeMs // Exactly 2 seconds for keyboard keys & grab handles
-        } else {
-            standardDwellTimeMs
-        }
+        // All webview clicks, game touches, keyboard keys and buttons follow userDwellTimeMs (default 2s)
+        return userDwellTimeMs
     }
 
     fun update(ray: Ray3D?) {

@@ -52,6 +52,14 @@ class VRPanel(
         textureBuffer.put(textureCoords).position(0)
     }
 
+    fun setDimensions(newW: Float, newH: Float) {
+        width = newW
+        height = newH
+        updateVertexCoordinates()
+        vertexBuffer.position(0)
+        vertexBuffer.put(vertexCoords).position(0)
+    }
+
     private fun updateVertexCoordinates() {
         val hw = width / 2f
         val hh = height / 2f

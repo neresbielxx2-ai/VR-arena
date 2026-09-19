@@ -9,8 +9,10 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.util.Log
 import com.lunarvr.browser.BrowserController
+import com.lunarvr.browser.BrowserTouchElement
 import com.lunarvr.browser.BrowserView
 import com.lunarvr.browser.URLBar
+import com.lunarvr.environment.EnvironmentBackdrop
 import com.lunarvr.environment.EnvironmentManager
 import com.lunarvr.handtracking.InteractionManager
 import com.lunarvr.handtracking.Ray3D
@@ -40,8 +42,9 @@ class VRRenderer(
     // Interaction & Gaze Pointing
     val interactionManager = InteractionManager()
 
-    // Environment System
+    // Environment System with Real 3D Scenery Backdrops
     val environmentManager = EnvironmentManager()
+    private val backdrops = mutableMapOf<com.lunarvr.environment.VREnvironmentType, EnvironmentBackdrop>()
 
     // Subsystems
     val lunarBar = LunarBar(
@@ -50,6 +53,7 @@ class VRRenderer(
     )
 
     val settingsPanel = SettingsPanel(vrSession) {
+        interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
         refreshInteractiveElements()
     }
 
@@ -64,8 +68,21 @@ class VRRenderer(
         onBackClick = { browserView?.goBack() },
         onForwardClick = { browserView?.goForward() },
         onRefreshClick = { browserView?.reload() },
-        onHomeClick = { browserView?.loadUrl("https://www.google.com") }
+        onHomeClick = { browserView?.loadUrl("https://www.google.com") },
+        onResizeClick = { cycleBrowserScale() }
     )
+
+    // Interactive Touch surface for clicking links/buttons directly inside the web browser with 2s gaze!
+    private var browserTouchElement = BrowserTouchElement(
+        "browser_touch_surface", 0f, 0.08f, -1.35f, 1.25f, 0.75f
+    ) { normX, normY ->
+        browserView?.dispatchClick(normX, normY)
+        showNotification("Clique no Navegador")
+    }
+
+    // Dynamic scale levels for apps: 1.0x (Standard), 1.3x (Large), 1.6x (Cinema)
+    private val browserScales = listOf(1.0f, 1.3f, 1.6f)
+    private var currentBrowserScaleIdx = 0
 
     val vrKeyboard = VRKeyboard()
     val textInputManager = TextInputManager()
@@ -80,7 +97,7 @@ class VRRenderer(
     private var keyboardVRPanel: VRPanel? = null
 
     // Meta Quest style App Window Drag Handles: independent move handle under EACH open app window!
-    private var browserGrabHandle = GrabHandle("grab_browser", 0.0f, -0.32f, -1.35f, 0.42f, 0.06f)
+    private var browserGrabHandle = GrabHandle("grab_browser", 0.0f, -0.36f, -1.35f, 0.42f, 0.06f)
     private var settingsGrabHandle = GrabHandle("grab_settings", 0.0f, -0.38f, -1.30f, 0.42f, 0.06f)
     private var envGrabHandle = GrabHandle("grab_env", 0.0f, -0.38f, -1.30f, 0.42f, 0.06f)
     private var keyboardGrabHandle = GrabHandle("grab_keyboard", 0.0f, -0.34f, -1.25f, 0.42f, 0.06f)
@@ -110,7 +127,7 @@ class VRRenderer(
     private var screenWidth = 1920
     private var screenHeight = 1080
 
-    // Navigation State (single active window visible at a time to prevent overlap!)
+    // Navigation State
     private var currentDestination = LunarNavDestination.HOME
 
     private val headViewMatrix = FloatArray(16)
@@ -136,8 +153,10 @@ class VRRenderer(
             initStarfield()
             initReticle()
             initPanels()
+            initBackdrops()
 
             browserView = BrowserView(context, browserController)
+            interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
 
             // Dynamic Spherical Drag Handlers: smoothly reposition panels 360° around user without invisible walls!
             lunarBar.grabHandle.onDragUpdateSpherical = { yaw, height, dist ->
@@ -157,22 +176,7 @@ class VRRenderer(
                 val bx = (dist * Math.sin(rad)).toFloat()
                 val bz = (-dist * Math.cos(rad)).toFloat()
 
-                browserPanel?.let {
-                    it.x = bx
-                    it.y = height
-                    it.z = bz
-                    it.rotationYDeg = -yaw
-                }
-                urlPanel?.let {
-                    it.x = bx
-                    it.y = height + 0.38f
-                    it.z = bz
-                    it.rotationYDeg = -yaw
-                }
-                browserGrabHandle.x = bx
-                browserGrabHandle.y = height - 0.38f
-                browserGrabHandle.z = bz
-                urlBar.setupButtons(bx, height + 0.38f)
+                applyBrowserTransform(bx, height, bz, -yaw)
             }
 
             settingsGrabHandle.onDragUpdateSpherical = { yaw, height, dist ->
@@ -258,6 +262,69 @@ class VRRenderer(
         }
     }
 
+    private fun cycleBrowserScale() {
+        currentBrowserScaleIdx = (currentBrowserScaleIdx + 1) % browserScales.size
+        val scale = browserScales[currentBrowserScaleIdx]
+        urlBar.scaleName = "${scale}x"
+
+        val baseW = 1.25f * scale
+        val baseH = 0.75f * scale
+
+        browserPanel?.setDimensions(baseW, baseH)
+        urlPanel?.setDimensions(baseW, 0.14f * scale)
+
+        browserTouchElement.width = baseW
+        browserTouchElement.height = baseH
+
+        val rad = Math.toRadians(browserYawDeg.toDouble())
+        val dist = 1.35f
+        val bx = (dist * Math.sin(rad)).toFloat()
+        val bz = (-dist * Math.cos(rad)).toFloat()
+
+        applyBrowserTransform(bx, browserHeightY, bz, -browserYawDeg)
+        showNotification("Escala Navegador: ${scale}x")
+        refreshInteractiveElements()
+    }
+
+    private fun applyBrowserTransform(bx: Float, by: Float, bz: Float, rotY: Float) {
+        val scale = browserScales[currentBrowserScaleIdx]
+        val panelH = 0.75f * scale
+        val urlH = 0.14f * scale
+
+        browserPanel?.let {
+            it.x = bx
+            it.y = by
+            it.z = bz
+            it.rotationYDeg = rotY
+        }
+
+        urlPanel?.let {
+            it.x = bx
+            it.y = by + (panelH / 2f) + (urlH / 2f) + 0.02f
+            it.z = bz
+            it.rotationYDeg = rotY
+        }
+
+        browserTouchElement.x = bx
+        browserTouchElement.y = by
+        browserTouchElement.z = bz
+
+        browserGrabHandle.x = bx
+        browserGrabHandle.y = by - (panelH / 2f) - 0.06f
+        browserGrabHandle.z = bz
+
+        urlBar.setupButtons(bx, by + (panelH / 2f) + (urlH / 2f) + 0.02f)
+    }
+
+    private fun initBackdrops() {
+        for (env in com.lunarvr.environment.VREnvironmentType.values()) {
+            val bd = EnvironmentBackdrop(env)
+            bd.panel.initGL()
+            bd.renderBackdrop()
+            backdrops[env] = bd
+        }
+    }
+
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         screenWidth = if (width > 0) width else 1920
         screenHeight = if (height > 0) height else 1080
@@ -284,22 +351,23 @@ class VRRenderer(
             vrSession.headTracking.getHeadMatrix(headViewMatrix)
 
             // Gaze Ray in World Space:
-            // Camera position is at world (0,0,0).
-            // Camera forward vector in world coordinates is row 2 of View Matrix negated:
             val fwdX = -headViewMatrix[2]
             val fwdY = -headViewMatrix[6]
             val fwdZ = -headViewMatrix[10]
             val gazeRay = Ray3D(0f, 0f, 0f, fwdX, fwdY, fwdZ)
 
+            // Update web touch coordinates dynamically on raycast
+            if (currentDestination == LunarNavDestination.BROWSER) {
+                browserTouchElement.updateHitCoordinate(gazeRay)
+            }
+
             interactionManager.update(gazeRay)
 
             // Spherical coordinate tracking (Yaw angle in degrees and vertical height Y)
-            // No invisible wall collision! Freely turns around 360° and raises/lowers cleanly.
             val gazeYawDeg = Math.toDegrees(Math.atan2(fwdX.toDouble(), -fwdZ.toDouble())).toFloat()
             val gazeHeightY = fwdY * 1.35f
 
             // Update any active grab handles:
-            // If looked at for 2 seconds, grab handle locks and tracks spherical gaze, then automatically unlocks after 2s
             lunarBar.grabHandle.updateGrabSpherical(gazeYawDeg, (gazeHeightY - 0.15f).coerceIn(-0.7f, 0.5f), 1.35f)
             browserGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.6f), 1.35f)
             settingsGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.6f), 1.30f)
@@ -355,6 +423,10 @@ class VRRenderer(
 
         // Draw Panels in World space
         GLES20.glUseProgram(panelProgram)
+
+        // Draw Scenic Environment 3D Backdrop (Moon with Earth, Cyber Synthwave, Zen Forest, Skyline)
+        val curBackdrop = backdrops[environmentManager.currentEnvironment]
+        curBackdrop?.panel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
 
         // Floating Lunar Bar
         barPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
@@ -512,11 +584,12 @@ class VRRenderer(
         }
         interactionManager.register(lunarBar.grabHandle)
 
-        // Register Browser buttons and drag handle if Browser is open
+        // Register Browser buttons, web click touch surface, and drag handle
         if (currentDestination == LunarNavDestination.BROWSER) {
             for (btn in urlBar.buttons) {
                 interactionManager.register(btn)
             }
+            interactionManager.register(browserTouchElement)
             interactionManager.register(browserGrabHandle)
         }
 
@@ -662,7 +735,7 @@ class VRRenderer(
     }
 
     private fun updateBrowserPanels() {
-        // Draw URL bar with interactive address bar
+        // Draw URL bar with interactive address bar and resize button
         urlPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
@@ -682,20 +755,33 @@ class VRRenderer(
             paint.color = Color.parseColor("#CBD5E1")
             canvas.drawText("◀   ▶   ↻   ✦", 40f, 75f, paint)
 
-            // Interactive Search/URL field (click to open VR keyboard)
+            // Interactive Search/URL field
             paint.color = Color.parseColor("#18233A")
-            canvas.drawRoundRect(RectF(320f, 25f, 990f, 100f), 18f, 18f, paint)
+            canvas.drawRoundRect(RectF(320f, 25f, 830f, 100f), 18f, 18f, paint)
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 2f
             paint.color = Color.parseColor("#38BDF8")
-            canvas.drawRoundRect(RectF(320f, 25f, 990f, 100f), 18f, 18f, paint)
+            canvas.drawRoundRect(RectF(320f, 25f, 830f, 100f), 18f, 18f, paint)
 
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#00E5FF")
             paint.textSize = 28f
-            val displayTxt = if (urlBar.displayUrl.length > 38) urlBar.displayUrl.take(38) + "..." else urlBar.displayUrl
-            canvas.drawText("🔍  $displayTxt", 345f, 72f, paint)
+            val displayTxt = if (urlBar.displayUrl.length > 28) urlBar.displayUrl.take(28) + "..." else urlBar.displayUrl
+            canvas.drawText("🔍  $displayTxt", 340f, 72f, paint)
+
+            // Resize pill button at the right
+            paint.color = Color.parseColor("#1E3A8A")
+            canvas.drawRoundRect(RectF(850f, 25f, 990f, 100f), 18f, 18f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.parseColor("#38BDF8")
+            canvas.drawRoundRect(RectF(850f, 25f, 990f, 100f), 18f, 18f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#F8FAFC")
+            paint.textSize = 26f
+            canvas.drawText("⤢ ${urlBar.scaleName}", 865f, 70f, paint)
         }
 
         // Draw WebView content
@@ -756,7 +842,7 @@ class VRRenderer(
 
                 // Title
                 paint.style = Paint.Style.FILL
-                paint.textSize = 28f
+                paint.textSize = 27f
                 paint.color = Color.parseColor("#F8FAFC")
                 val activeTag = if (isCurrent) " (Ativo)" else ""
                 canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 48f, paint)
@@ -834,9 +920,9 @@ class VRRenderer(
                 }
 
                 paint.style = Paint.Style.FILL
-                paint.textSize = 25f
+                paint.textSize = 24f
                 paint.color = Color.parseColor("#F8FAFC")
-                canvas.drawText(btn.label, bx + 25f, by + 44f, paint)
+                canvas.drawText(btn.label, bx + 22f, by + 44f, paint)
             }
 
             // Drag handle at the bottom of settings panel
@@ -875,7 +961,7 @@ class VRRenderer(
             paint.textSize = 24f
             canvas.drawText("✕ Fechar", 880f, 65f, paint)
 
-            // Draw virtual keys (2 seconds dwell click)
+            // Draw virtual keys (Dwell click according to user setting)
             val rows = vrKeyboard.getCurrentRows()
             var startKeyY = 105f
             var keyIdx = 0
@@ -908,7 +994,7 @@ class VRRenderer(
                     paint.color = if (isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#25344F")
                     canvas.drawRoundRect(RectF(kx + 4f, ky + 4f, kx + kw - 4f, ky + kh - 4f), 12f, 12f, paint)
 
-                    // 2-second Dwell progress bar inside the key
+                    // Dwell progress bar inside key
                     if (isHovered && btn != null && btn.hoverProgress > 0f) {
                         paint.color = Color.parseColor("#00E5FF")
                         paint.strokeWidth = 6f
@@ -937,12 +1023,12 @@ class VRRenderer(
     }
 
     private fun initPanels() {
-        // Lunar Bar: right in front, comfortable natural eye rest
+        // Lunar Bar
         barPanel = VRPanel("lunar_bar", 0.0f, -0.28f, -1.35f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
 
-        // Browser & URL Panels
-        urlPanel = VRPanel("url_panel", 0.0f, 0.46f, -1.35f, 1.15f, 0.14f, 1024, 128).also { it.initGL() }
-        browserPanel = VRPanel("browser_panel", 0.0f, 0.08f, -1.35f, 1.15f, 0.65f, 1024, 768).also { it.initGL() }
+        // Browser & URL Panels (1024x768 4:3 native ratio with clean scale)
+        urlPanel = VRPanel("url_panel", 0.0f, 0.48f, -1.35f, 1.25f, 0.14f, 1024, 128).also { it.initGL() }
+        browserPanel = VRPanel("browser_panel", 0.0f, 0.08f, -1.35f, 1.25f, 0.75f, 1024, 768).also { it.initGL() }
 
         // Settings Panel
         settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.10f, -1.30f, 1.10f, 0.82f, 1024, 768).also { it.initGL() }

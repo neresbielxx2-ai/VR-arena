@@ -1,14 +1,16 @@
 package com.lunarvr.environment
 
+import android.graphics.Color
+
 enum class VREnvironmentType(val displayName: String, val description: String) {
-    LUNAR_SPACE("Espaço Lunar", "Noite profunda com campo estelar brilhante"),
-    NEBULA_DREAM("Nebulosa Cósmica", "Tons de violeta e ciano interestelar"),
-    CYBER_GRID("Grid Sci-Fi", "Matrix geométrica minimalista estilo Tron"),
-    DEEP_VOID("Vácuo Noturno", "Preto OLED absoluto para máxima concentração")
+    LUNAR_EARTH_VIEW("Órbita Lunar & Terra", "Superfície da Lua com a Terra flutuando ao fundo"),
+    CYBER_SYNTHWAVE("Cyberpunk Synthwave", "Horizonte retro futurista com sol neon e montanhas"),
+    ZEN_FOREST("Floresta Zen Noturna", "Aurora boreal, montanhas calmas e vaga-lumes"),
+    MINIMAL_LOFT("Sky Loft Moderno", "Piso de mirante de vidro em arranha-céu com horizonte urbano")
 }
 
 class EnvironmentManager {
-    var currentEnvironment: VREnvironmentType = VREnvironmentType.LUNAR_SPACE
+    var currentEnvironment: VREnvironmentType = VREnvironmentType.LUNAR_EARTH_VIEW
         private set
 
     fun setEnvironment(type: VREnvironmentType) {
@@ -17,19 +19,19 @@ class EnvironmentManager {
 
     fun getClearColor(): FloatArray {
         return when (currentEnvironment) {
-            VREnvironmentType.LUNAR_SPACE -> floatArrayOf(0.027f, 0.039f, 0.070f, 1.0f) // #070A12
-            VREnvironmentType.NEBULA_DREAM -> floatArrayOf(0.060f, 0.020f, 0.090f, 1.0f) // Dark violet
-            VREnvironmentType.CYBER_GRID -> floatArrayOf(0.010f, 0.040f, 0.060f, 1.0f)  // Dark cyan
-            VREnvironmentType.DEEP_VOID -> floatArrayOf(0.002f, 0.002f, 0.005f, 1.0f)   // Pure OLED black
+            VREnvironmentType.LUNAR_EARTH_VIEW -> floatArrayOf(0.015f, 0.020f, 0.035f, 1.0f) // Deep cosmos
+            VREnvironmentType.CYBER_SYNTHWAVE -> floatArrayOf(0.080f, 0.015f, 0.090f, 1.0f) // Magenta dark
+            VREnvironmentType.ZEN_FOREST -> floatArrayOf(0.010f, 0.040f, 0.030f, 1.0f) // Forest night
+            VREnvironmentType.MINIMAL_LOFT -> floatArrayOf(0.020f, 0.030f, 0.045f, 1.0f) // Penthouse night
         }
     }
 
     fun getStarColor(): FloatArray {
         return when (currentEnvironment) {
-            VREnvironmentType.LUNAR_SPACE -> floatArrayOf(0.80f, 0.90f, 1.00f, 0.75f)
-            VREnvironmentType.NEBULA_DREAM -> floatArrayOf(0.95f, 0.60f, 0.98f, 0.85f)
-            VREnvironmentType.CYBER_GRID -> floatArrayOf(0.00f, 0.95f, 1.00f, 0.80f)
-            VREnvironmentType.DEEP_VOID -> floatArrayOf(0.40f, 0.50f, 0.60f, 0.30f)
+            VREnvironmentType.LUNAR_EARTH_VIEW -> floatArrayOf(0.90f, 0.95f, 1.00f, 0.85f)
+            VREnvironmentType.CYBER_SYNTHWAVE -> floatArrayOf(1.00f, 0.40f, 0.80f, 0.70f)
+            VREnvironmentType.ZEN_FOREST -> floatArrayOf(0.40f, 1.00f, 0.70f, 0.80f)
+            VREnvironmentType.MINIMAL_LOFT -> floatArrayOf(0.80f, 0.85f, 0.95f, 0.60f)
         }
     }
 }

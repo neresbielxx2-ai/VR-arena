@@ -7,9 +7,11 @@ class URLBar(
     private val onBackClick: () -> Unit,
     private val onForwardClick: () -> Unit,
     private val onRefreshClick: () -> Unit,
-    private val onHomeClick: () -> Unit
+    private val onHomeClick: () -> Unit,
+    private val onResizeClick: () -> Unit
 ) {
     var displayUrl: String = "https://www.google.com"
+    var scaleName: String = "1.0x"
 
     val buttons = mutableListOf<AppButton>()
 
@@ -23,14 +25,19 @@ class URLBar(
         val yPos = centerY
 
         // Navigation controls
-        buttons.add(AppButton("url_back", "◀", centerX - 0.48f, yPos, zPos, 0.08f, 0.08f) { onBackClick() })
-        buttons.add(AppButton("url_fwd", "▶", centerX - 0.38f, yPos, zPos, 0.08f, 0.08f) { onForwardClick() })
-        buttons.add(AppButton("url_reload", "↻", centerX - 0.28f, yPos, zPos, 0.08f, 0.08f) { onRefreshClick() })
-        buttons.add(AppButton("url_home", "✦", centerX - 0.18f, yPos, zPos, 0.08f, 0.08f) { onHomeClick() })
+        buttons.add(AppButton("url_back", "◀", centerX - 0.50f, yPos, zPos, 0.08f, 0.08f) { onBackClick() })
+        buttons.add(AppButton("url_fwd", "▶", centerX - 0.40f, yPos, zPos, 0.08f, 0.08f) { onForwardClick() })
+        buttons.add(AppButton("url_reload", "↻", centerX - 0.30f, yPos, zPos, 0.08f, 0.08f) { onRefreshClick() })
+        buttons.add(AppButton("url_home", "✦", centerX - 0.20f, yPos, zPos, 0.08f, 0.08f) { onHomeClick() })
 
         // URL address bar button (opens VR keyboard)
-        buttons.add(AppButton("url_input", displayUrl, centerX + 0.20f, yPos, zPos, 0.60f, 0.08f) {
+        buttons.add(AppButton("url_input", displayUrl, centerX + 0.12f, yPos, zPos, 0.46f, 0.08f) {
             onUrlClick()
+        })
+
+        // Resize button (+ Tamanho da Aba)
+        buttons.add(AppButton("url_resize", "⤢ $scaleName", centerX + 0.48f, yPos, zPos, 0.16f, 0.08f) {
+            onResizeClick()
         })
     }
 }
