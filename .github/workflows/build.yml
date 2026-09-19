@@ -38,7 +38,8 @@ jobs:
         run: gradle test --no-daemon --stacktrace || true
 
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle_build.log || (cat /tmp/gradle_build.log | grep -E -A 10 -B 2 "(e: |error:|FAILURE:)" && exit 1)
 
       - name: Build Release APK (Unsigned)
         run: gradle assembleRelease --no-daemon --stacktrace || true
