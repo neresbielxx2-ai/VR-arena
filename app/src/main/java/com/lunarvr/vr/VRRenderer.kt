@@ -52,9 +52,13 @@ class VRRenderer(
         onRecenter = { vrSession.recenterManager.triggerRecenter() }
     )
 
-    val settingsPanel: SettingsPanel = SettingsPanel(vrSession) {
-        interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
-        refreshInteractiveElements()
+    lateinit var settingsPanel: SettingsPanel
+
+    init {
+        settingsPanel = SettingsPanel(vrSession) {
+            interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+            refreshInteractiveElements()
+        }
     }
 
     val environmentPanel = EnvironmentPanel(environmentManager) {
