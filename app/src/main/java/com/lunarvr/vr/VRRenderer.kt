@@ -20,6 +20,8 @@ import com.lunarvr.keyboard.TextInputManager
 import com.lunarvr.keyboard.VRKey
 import com.lunarvr.keyboard.VRKeyboard
 import com.lunarvr.keyboard.VRKeyboardListener
+import com.lunarvr.ui.BarStyle
+import com.lunarvr.ui.BarColorTheme
 import com.lunarvr.ui.EnvironmentPanel
 import com.lunarvr.ui.GrabHandle
 import com.lunarvr.ui.LunarBar

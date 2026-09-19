@@ -1,5 +1,9 @@
 package com.lunarvr.ui
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
 enum class BarStyle(val displayName: String) {
     META_QUEST("Meta Quest 3S"),
     LUNAR_COSMIC("Lunar Cósmico"),
@@ -19,10 +23,6 @@ enum class BarColorTheme(
     NEON_ROSE("Neon Sunset", "#F51F101A", "#EC4899", "#F472B6", "#DB2777"),
     DEEP_OCEAN("Oceano Glacial", "#F50E1826", "#0284C7", "#38BDF8", "#0369A1")
 }
-
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 enum class LunarNavDestination {
     HOME,

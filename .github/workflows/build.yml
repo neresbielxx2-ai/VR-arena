@@ -34,9 +34,24 @@ jobs:
           gradle-version: '8.4'
           cache-disabled: true
 
-      - name: Compile Kotlin Diagnostics
+      - name: Run Unit Tests
+        run: gradle test --no-daemon --stacktrace || true
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Build Release APK (Unsigned)
+        run: gradle assembleRelease --no-daemon --stacktrace || true
+
+      - name: Copy & Prepare APK Artifacts
         run: |
-          gradle compileDebugKotlin --no-daemon 2>&1 | tee /tmp/kt_diag.log || true
-          ERRORS=$(grep -E "^e: " /tmp/kt_diag.log | head -n 10 | tr '\n' ' ' || true)
-          echo "::error title=KotlinErrors::$ERRORS"
-          exit 1
+          mkdir -p output-apks
+          find app/build/outputs/apk -name "*.apk" -exec cp -v {} output-apks/ \;
+          ls -la output-apks/
+
+      - name: Upload LunarVR APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LunarVR-APK
+          path: output-apks/*.apk
+          retention-days: 14
