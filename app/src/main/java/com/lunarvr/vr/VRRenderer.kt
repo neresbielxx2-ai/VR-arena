@@ -948,7 +948,7 @@ class VRRenderer(
             paint.style = Paint.Style.FILL
             paint.textSize = 34f
             paint.color = Color.parseColor("#00E5FF")
-            canvas.drawText("AJUSTES DO SISTEMA", 100f, 75f, paint)
+            canvas.drawText("CONFIGURAÇÃO DO SISTEMA", 100f, 75f, paint)
 
             // System info with clean colored categories
             paint.textSize = 24f

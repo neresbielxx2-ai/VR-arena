@@ -92,7 +92,7 @@ class LunarBar(
         )
 
         buttons.add(
-            AppButton("btn_settings", "Ajustes", posX + 0.40f, posY, posZ, btnW, btnH) {
+            AppButton("btn_settings", "Configuração", posX + 0.40f, posY, posZ, btnW, btnH) {
                 onNavigate(LunarNavDestination.SETTINGS)
             }
         )

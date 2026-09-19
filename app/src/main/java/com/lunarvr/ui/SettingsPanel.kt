@@ -118,7 +118,7 @@ class SettingsPanel(
         )
 
         buttons.add(
-            AppButton("btn_close_settings", "✕ Fechar Ajustes", colRight, startY - 0.30f, zPos, btnW, btnH) {
+            AppButton("btn_close_settings", "✕ Fechar Configuração", colRight, startY - 0.30f, zPos, btnW, btnH) {
                 isVisible = false
                 onSettingChanged()
             }
