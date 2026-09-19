@@ -30,7 +30,6 @@ class BrowserView(private val context: Context, private val controller: BrowserC
                     domStorageEnabled = true
                     useWideViewPort = true
                     loadWithOverviewMode = true
-                    userAgentString = "Mozilla/5.0 (Linux; Android 13; VR) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                 }
                 wv.layout(0, 0, width, height)
 
