@@ -14,7 +14,7 @@ import com.lunarvr.ui.VRPanel
 class EnvironmentBackdrop(val type: VREnvironmentType) {
 
     // 3D Billboard panel located at a scenic distance (Z = -3.2f, width = 6.0f, height = 3.6f)
-    var panel: VRPanel = VRPanel("env_backdrop_${type.name}", 0.0f, 0.40f, -3.2f, 6.0f, 3.6f, 1024, 614)
+    var panel: VRPanel = VRPanel("env_backdrop_" + type.name, 0.0f, 0.40f, -3.2f, 6.0f, 3.6f, 1024, 614)
 
     fun renderBackdrop() {
         panel.drawCustom { canvas, paint ->
