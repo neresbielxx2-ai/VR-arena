@@ -79,6 +79,7 @@ class EnvironmentBackdrop(val type: VREnvironmentType) {
         paint.shader = null
 
         // Moon craters
+        paint.style = Paint.Style.FILL
         paint.color = Color.parseColor("#252F3F")
         canvas.drawOval(RectF(120f, h * 0.74f, 260f, h * 0.82f), paint)
         canvas.drawOval(RectF(480f, h * 0.78f, 680f, h * 0.88f), paint)

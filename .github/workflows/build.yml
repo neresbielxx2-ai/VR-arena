@@ -36,10 +36,11 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace || gradle assembleDebug --no-daemon --info
+          gradle assembleDebug --no-daemon --info --stacktrace
 
       - name: Build Release APK (Unsigned)
-        run: gradle assembleRelease --no-daemon --stacktrace || true
+        run: |
+          gradle assembleRelease --no-daemon --stacktrace || true
 
       - name: Copy & Prepare APK Artifacts
         run: |
