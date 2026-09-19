@@ -38,21 +38,21 @@ jobs:
         run: gradle test --no-daemon --stacktrace || true
 
       - name: Build Debug APK
-        run: |
-          gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle_build.log || (cat /tmp/gradle_build.log | grep -E -A 10 -B 2 "(e: |error:|FAILURE:)" && exit 1)
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Build Release APK (Unsigned)
-        run: gradle :app:assembleRelease --no-daemon --stacktrace || true
+        run: gradle assembleRelease --no-daemon --stacktrace || true
 
       - name: Copy & Prepare APK Artifacts
         run: |
           mkdir -p output-apks
-          find . -name "*.apk" | while read -r apk; do
-            if [[ "$apk" != *"output-apks"* ]]; then
-              echo "Copying $apk"
-              cp -v "$apk" output-apks/
-            fi
-          done
+          echo "Listing all files in app/build/outputs:"
+          ls -la app/build/outputs/ || true
+          ls -la app/build/outputs/apk/ || true
+          find app/build/outputs/ -name "*.apk" -exec cp -v {} output-apks/ \; || true
+          if [ -z "$(ls -A output-apks)" ]; then
+            find . -name "*.apk" -not -path "*/output-apks/*" -exec cp -v {} output-apks/ \; || true
+          fi
           ls -la output-apks/
 
       - name: Upload LunarVR APK Artifact
