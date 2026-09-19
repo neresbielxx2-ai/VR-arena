@@ -16,27 +16,27 @@ class URLBar(
     val buttons = mutableListOf<AppButton>()
 
     init {
-        setupButtons(0f, 0.45f)
+        setupButtons(0f, 0.58f)
     }
 
-    fun setupButtons(centerX: Float = 0f, centerY: Float = 0.45f) {
+    fun setupButtons(centerX: Float = 0f, centerY: Float = 0.58f) {
         buttons.clear()
-        val zPos = -1.35f
+        val zPos = -1.45f
         val yPos = centerY
 
         // Navigation controls
-        buttons.add(AppButton("url_back", "◀", centerX - 0.50f, yPos, zPos, 0.08f, 0.08f) { onBackClick() })
-        buttons.add(AppButton("url_fwd", "▶", centerX - 0.40f, yPos, zPos, 0.08f, 0.08f) { onForwardClick() })
-        buttons.add(AppButton("url_reload", "↻", centerX - 0.30f, yPos, zPos, 0.08f, 0.08f) { onRefreshClick() })
-        buttons.add(AppButton("url_home", "✦", centerX - 0.20f, yPos, zPos, 0.08f, 0.08f) { onHomeClick() })
+        buttons.add(AppButton("url_back", "◀", centerX - 0.65f, yPos, zPos, 0.08f, 0.08f) { onBackClick() })
+        buttons.add(AppButton("url_fwd", "▶", centerX - 0.55f, yPos, zPos, 0.08f, 0.08f) { onForwardClick() })
+        buttons.add(AppButton("url_reload", "↻", centerX - 0.45f, yPos, zPos, 0.08f, 0.08f) { onRefreshClick() })
+        buttons.add(AppButton("url_home", "✦", centerX - 0.35f, yPos, zPos, 0.08f, 0.08f) { onHomeClick() })
 
-        // URL address bar button (opens VR keyboard)
-        buttons.add(AppButton("url_input", displayUrl, centerX + 0.12f, yPos, zPos, 0.46f, 0.08f) {
+        // URL address bar button (spacious width: 0.80m)
+        buttons.add(AppButton("url_input", displayUrl, centerX + 0.12f, yPos, zPos, 0.80f, 0.08f) {
             onUrlClick()
         })
 
         // Resize button (+ Tamanho da Aba)
-        buttons.add(AppButton("url_resize", "⤢ $scaleName", centerX + 0.48f, yPos, zPos, 0.16f, 0.08f) {
+        buttons.add(AppButton("url_resize", "⤢ $scaleName", centerX + 0.65f, yPos, zPos, 0.18f, 0.08f) {
             onResizeClick()
         })
     }

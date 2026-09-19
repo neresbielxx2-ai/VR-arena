@@ -78,14 +78,15 @@ class VRRenderer(
 
     // Interactive Touch surface for clicking links/buttons directly inside the web browser with 2s gaze!
     private var browserTouchElement = BrowserTouchElement(
-        "browser_touch_surface", 0f, 0.08f, -1.35f, 1.25f, 0.75f
+        "browser_touch_surface", 0f, 0.08f, -1.45f, 1.60f, 1.00f
     ) { normX, normY ->
         browserView?.dispatchClick(normX, normY)
         showNotification("Clique no Navegador")
     }
 
-    // Dynamic scale levels for apps: 1.0x (Standard), 1.3x (Large), 1.6x (Cinema)
-    private val browserScales = listOf(1.0f, 1.3f, 1.6f)
+    // Dynamic scale levels for apps: 1.0x (Standard), 1.25x (Large), 1.5x (Cinema)
+    // Base dimensions: 1.60m width x 1.00m height (comfortable 16:10 spacious desktop aspect ratio)
+    private val browserScales = listOf(1.0f, 1.25f, 1.5f)
     private var currentBrowserScaleIdx = 0
 
     val vrKeyboard = VRKeyboard()
@@ -271,17 +272,17 @@ class VRRenderer(
         val scale = browserScales[currentBrowserScaleIdx]
         urlBar.scaleName = "${scale}x"
 
-        val baseW = 1.25f * scale
-        val baseH = 0.75f * scale
+        val baseW = 1.60f * scale
+        val baseH = 1.00f * scale
 
         browserPanel?.setDimensions(baseW, baseH)
-        urlPanel?.setDimensions(baseW, 0.14f * scale)
+        urlPanel?.setDimensions(baseW, 0.15f * scale)
 
         browserTouchElement.width = baseW
         browserTouchElement.height = baseH
 
         val rad = Math.toRadians(browserYawDeg.toDouble())
-        val dist = 1.35f
+        val dist = 1.45f
         val bx = (dist * Math.sin(rad)).toFloat()
         val bz = (-dist * Math.cos(rad)).toFloat()
 
@@ -292,8 +293,8 @@ class VRRenderer(
 
     private fun applyBrowserTransform(bx: Float, by: Float, bz: Float, rotY: Float) {
         val scale = browserScales[currentBrowserScaleIdx]
-        val panelH = 0.75f * scale
-        val urlH = 0.14f * scale
+        val panelH = 1.00f * scale
+        val urlH = 0.15f * scale
 
         browserPanel?.let {
             it.x = bx
@@ -458,6 +459,8 @@ class VRRenderer(
         val rBuf = reticleBuffer ?: return
         if (reticleProgram == 0) return
 
+        // Always render reticle on top without depth occluding
+        GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         GLES20.glUseProgram(reticleProgram)
         val mvp = GLES20.glGetUniformLocation(reticleProgram, "uMVPMatrix")
         val color = GLES20.glGetUniformLocation(reticleProgram, "vColor")
@@ -472,31 +475,54 @@ class VRRenderer(
 
         GLES20.glUniformMatrix4fv(mvp, 1, false, mvpMatrix, 0)
 
-        val isHovering = interactionManager.currentProgress > 0f || lunarBar.grabHandle.isGrabbed
+        val progress = interactionManager.currentProgress
+        val isHovering = progress > 0f || lunarBar.grabHandle.isGrabbed
+        
+        // Dynamic reticle color transitioning from sleek Lunar violet to emerald neon when dwelling
         if (isHovering) {
-            GLES20.glUniform4f(color, 0.0f, 1.0f, 0.85f, 1.0f)
+            // Smoothly shift to intense emerald green/cyan: #10B981 -> #00FFCC
+            val r = 0.06f + (1f - progress) * 0.40f
+            val g = 0.85f + progress * 0.15f
+            val b = 0.55f + progress * 0.40f
+            GLES20.glUniform4f(color, r, g, b, 1.0f)
         } else {
-            GLES20.glUniform4f(color, 0.0f, 0.90f, 1.0f, 0.8f)
+            // Sleek holographic pearl lavender: #C084FC
+            GLES20.glUniform4f(color, 0.75f, 0.52f, 0.99f, 0.85f)
         }
 
         rBuf.position(0)
         GLES20.glEnableVertexAttribArray(pos)
         GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 0, rBuf)
 
-        GLES20.glLineWidth(3.5f)
-        GLES20.glDrawArrays(GLES20.GL_LINE_LOOP, 0, 24)
+        GLES20.glLineWidth(3.8f)
+        GLES20.glDrawArrays(GLES20.GL_LINE_LOOP, 0, 32)
+        // Center focal pip
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_FAN, 32, 32)
+
         GLES20.glDisableVertexAttribArray(pos)
+        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
     }
 
     private fun initReticle() {
-        val segments = 24
+        val segments = 32
         val radius = 0.016f
-        val coords = FloatArray(segments * 3)
+        val innerRadius = 0.005f
+        // Outer ring + inner dot
+        val coords = FloatArray((segments + segments + 2) * 3)
+        var idx = 0
+        // Outer circle loop
         for (i in 0 until segments) {
             val angle = 2.0 * Math.PI * i / segments
-            coords[i * 3] = (radius * Math.cos(angle)).toFloat()
-            coords[i * 3 + 1] = (radius * Math.sin(angle)).toFloat()
-            coords[i * 3 + 2] = 0f
+            coords[idx++] = (radius * Math.cos(angle)).toFloat()
+            coords[idx++] = (radius * Math.sin(angle)).toFloat()
+            coords[idx++] = 0f
+        }
+        // Inner center dot
+        for (i in 0 until segments) {
+            val angle = 2.0 * Math.PI * i / segments
+            coords[idx++] = (innerRadius * Math.cos(angle)).toFloat()
+            coords[idx++] = (innerRadius * Math.sin(angle)).toFloat()
+            coords[idx++] = 0f
         }
 
         val buf = ByteBuffer.allocateDirect(coords.size * 4)
@@ -655,14 +681,14 @@ class VRRenderer(
         barPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Meta Quest inspired floating dock pill
+            // Meta Quest inspired floating dock pill with sleek Cosmic Amethyst border
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#EE101625")
+            paint.color = Color.parseColor("#F4121626")
             canvas.drawRoundRect(RectF(14f, 14f, 1010f, 206f), 38f, 38f, paint)
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#38BDF8")
+            paint.color = Color.parseColor("#6366F1")
             canvas.drawRoundRect(RectF(14f, 14f, 1010f, 206f), 38f, 38f, paint)
 
             // Header status line: Title, Status, Battery Icon, Time
@@ -670,7 +696,7 @@ class VRRenderer(
             paint.textSize = 23f
             paint.color = Color.parseColor("#94A3B8")
             val statusTxt = if (notificationMessage != null && System.currentTimeMillis() < notificationEndTime) {
-                "⚡ ${notificationMessage}"
+                "✨ ${notificationMessage}"
             } else {
                 "LUNAR OS  |  ${lunarBar.vrStatus}"
             }
@@ -685,27 +711,37 @@ class VRRenderer(
             val btnH = 120f
             val by = 68f
 
+            // Sleek color accents per category (Emerald, Purple, Rose, Violet, Cyan)
+            val accentColors = listOf(
+                Pair("#10B981", "#064E3B"), // Home: Emerald Green
+                Pair("#6366F1", "#312E81"), // Browser: Cosmic Indigo
+                Pair("#EC4899", "#831843"), // Environments: Sunset Rose
+                Pair("#8B5CF6", "#4C1D95"), // Recenter: Royal Violet
+                Pair("#14B8A6", "#134E4A")  // Settings: Teal Cyan
+            )
+
             for (i in lunarBar.buttons.indices) {
                 val btn = lunarBar.buttons[i]
                 val bx = 26f + i * 196f
+                val (accentBorder, accentHoverBg) = accentColors[i % accentColors.size]
 
-                // Meta Quest rounded rect card
+                // Rounded rect card
                 paint.style = Paint.Style.FILL
                 if (btn.isHovered) {
-                    paint.color = Color.parseColor("#1E2D4A")
+                    paint.color = Color.parseColor(accentHoverBg)
                 } else {
-                    paint.color = Color.parseColor("#151E32")
+                    paint.color = Color.parseColor("#171F33")
                 }
                 canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), 22f, 22f, paint)
 
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = if (btn.isHovered) 3.5f else 1.8f
-                paint.color = if (btn.isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#25344F")
+                paint.color = if (btn.isHovered) Color.parseColor(accentBorder) else Color.parseColor("#2E3A52")
                 canvas.drawRoundRect(RectF(bx, by, bx + btnW, by + btnH), 22f, 22f, paint)
 
-                // Hover progress
+                // Hover progress bar with distinct category accent
                 if (btn.isHovered && btn.hoverProgress > 0f) {
-                    paint.color = Color.parseColor("#00E5FF")
+                    paint.color = Color.parseColor(accentBorder)
                     paint.strokeWidth = 7f
                     val progressW = (btnW - 24f) * btn.hoverProgress
                     canvas.drawLine(bx + 12f, by + btnH - 8f, bx + 12f + progressW, by + btnH - 8f, paint)
@@ -714,7 +750,7 @@ class VRRenderer(
                 // Clean Vector Icons
                 val iconCx = bx + btnW / 2f
                 val iconCy = by + 45f
-                val iconColor = if (btn.isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#E2E8F0")
+                val iconColor = if (btn.isHovered) Color.parseColor(accentBorder) else Color.parseColor("#E2E8F0")
 
                 when (i) {
                     0 -> ModernIcons.drawHomeIcon(canvas, paint, iconCx, iconCy, 36f, iconColor)
@@ -739,53 +775,53 @@ class VRRenderer(
     }
 
     private fun updateBrowserPanels() {
-        // Draw URL bar with interactive address bar and resize button
+        // Draw URL bar with spacious modern design (1280x120 texture)
         urlPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Shell
+            // Outer shell with rich dark violet/slate gradient look
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F0101625")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 118f), 24f, 24f, paint)
+            paint.color = Color.parseColor("#F5131728")
+            canvas.drawRoundRect(RectF(10f, 10f, 1270f, 110f), 28f, 28f, paint)
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#2D3C58")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 118f), 24f, 24f, paint)
+            paint.color = Color.parseColor("#475569")
+            canvas.drawRoundRect(RectF(10f, 10f, 1270f, 110f), 28f, 28f, paint)
 
-            // Navigation icons
+            // Navigation icons (spacious layout)
             paint.style = Paint.Style.FILL
             paint.textSize = 34f
-            paint.color = Color.parseColor("#CBD5E1")
-            canvas.drawText("◀   ▶   ↻   ✦", 40f, 75f, paint)
+            paint.color = Color.parseColor("#E2E8F0")
+            canvas.drawText("◀    ▶    ↻    ✦", 42f, 72f, paint)
 
-            // Interactive Search/URL field
-            paint.color = Color.parseColor("#18233A")
-            canvas.drawRoundRect(RectF(320f, 25f, 830f, 100f), 18f, 18f, paint)
+            // Interactive Search/URL field (expanded width: 340f to 1040f)
+            paint.color = Color.parseColor("#1E293B")
+            canvas.drawRoundRect(RectF(340f, 20f, 1040f, 100f), 20f, 20f, paint)
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 2f
-            paint.color = Color.parseColor("#38BDF8")
-            canvas.drawRoundRect(RectF(320f, 25f, 830f, 100f), 18f, 18f, paint)
+            paint.color = Color.parseColor("#818CF8")
+            canvas.drawRoundRect(RectF(340f, 20f, 1040f, 100f), 20f, 20f, paint)
 
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#00E5FF")
+            paint.color = Color.parseColor("#38BDF8")
             paint.textSize = 28f
-            val displayTxt = if (urlBar.displayUrl.length > 28) urlBar.displayUrl.take(28) + "..." else urlBar.displayUrl
-            canvas.drawText("🔍  $displayTxt", 340f, 72f, paint)
+            val displayTxt = if (urlBar.displayUrl.length > 46) urlBar.displayUrl.take(46) + "..." else urlBar.displayUrl
+            canvas.drawText("🌐  $displayTxt", 365f, 68f, paint)
 
-            // Resize pill button at the right
-            paint.color = Color.parseColor("#1E3A8A")
-            canvas.drawRoundRect(RectF(850f, 25f, 990f, 100f), 18f, 18f, paint)
+            // Resize pill button at the right (accented purple/cyan)
+            paint.color = Color.parseColor("#312E81")
+            canvas.drawRoundRect(RectF(1060f, 20f, 1250f, 100f), 20f, 20f, paint)
 
             paint.style = Paint.Style.STROKE
-            paint.color = Color.parseColor("#38BDF8")
-            canvas.drawRoundRect(RectF(850f, 25f, 990f, 100f), 18f, 18f, paint)
+            paint.color = Color.parseColor("#A855F7")
+            canvas.drawRoundRect(RectF(1060f, 20f, 1250f, 100f), 20f, 20f, paint)
 
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#F8FAFC")
             paint.textSize = 26f
-            canvas.drawText("⤢ ${urlBar.scaleName}", 865f, 70f, paint)
+            canvas.drawText("⤢ ${urlBar.scaleName}", 1085f, 68f, paint)
         }
 
         // Draw WebView content
@@ -835,19 +871,27 @@ class VRRenderer(
 
                 val isCurrent = (env == environmentManager.currentEnvironment)
 
+                // Distinct color scheme for each environment card
+                val cardTheme = when (env) {
+                    com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW -> Pair("#1E3A8A", "#38BDF8")
+                    com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
+                    com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
+                    com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
+                }
+
                 paint.style = Paint.Style.FILL
-                paint.color = if (isCurrent) Color.parseColor("#1E3A8A") else Color.parseColor("#152033")
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.first) else Color.parseColor("#151D2A")
                 canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
 
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = if (isCurrent) 3.5f else 1.8f
-                paint.color = if (isCurrent) Color.parseColor("#00E5FF") else Color.parseColor("#25344F")
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#334155")
                 canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
 
                 // Title
                 paint.style = Paint.Style.FILL
                 paint.textSize = 27f
-                paint.color = Color.parseColor("#F8FAFC")
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#F8FAFC")
                 val activeTag = if (isCurrent) " (Ativo)" else ""
                 canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 48f, paint)
 
@@ -887,13 +931,19 @@ class VRRenderer(
             paint.color = Color.parseColor("#00E5FF")
             canvas.drawText("AJUSTES DO SISTEMA", 100f, 75f, paint)
 
-            // System info
+            // System info with clean colored categories
             paint.textSize = 24f
-            paint.color = Color.parseColor("#94A3B8")
             val report = vrSession.hardwareReport
             val infoLines = settingsPanel.getSystemInfoText(report).lines()
             var textY = 130f
             for (line in infoLines) {
+                paint.color = when {
+                    line.startsWith("Bateria") -> Color.parseColor("#34D399") // Emerald
+                    line.startsWith("Modo") -> Color.parseColor("#38BDF8") // Sky
+                    line.startsWith("FPS") -> Color.parseColor("#FBBF24") // Amber
+                    line.startsWith("Tempo Dwell") -> Color.parseColor("#C084FC") // Violet
+                    else -> Color.parseColor("#94A3B8")
+                }
                 canvas.drawText(line, 50f, textY, paint)
                 textY += 36f
             }
@@ -909,16 +959,16 @@ class VRRenderer(
                 val bh = 65f
 
                 paint.style = Paint.Style.FILL
-                paint.color = if (btn.isHovered) Color.parseColor("#223354") else Color.parseColor("#152033")
+                paint.color = if (btn.isHovered) Color.parseColor("#2E1065") else Color.parseColor("#171F33")
                 canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 16f, 16f, paint)
 
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = if (btn.isHovered) 3.5f else 1.8f
-                paint.color = if (btn.isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#25344F")
+                paint.color = if (btn.isHovered) Color.parseColor("#A855F7") else Color.parseColor("#334155")
                 canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 16f, 16f, paint)
 
                 if (btn.isHovered && btn.hoverProgress > 0f) {
-                    paint.color = Color.parseColor("#00E5FF")
+                    paint.color = Color.parseColor("#C084FC")
                     paint.strokeWidth = 6f
                     canvas.drawLine(bx + 10f, by + bh - 6f, bx + 10f + (bw - 20f) * btn.hoverProgress, by + bh - 6f, paint)
                 }
@@ -941,27 +991,36 @@ class VRRenderer(
         keyboardVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Meta Quest OS virtual keyboard glass container
+            // Meta Quest OS virtual keyboard glass container with sleek Purple/Indigo accents
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F00E1424")
+            paint.color = Color.parseColor("#F5101424")
             canvas.drawRoundRect(RectF(10f, 10f, 1014f, 502f), 32f, 32f, paint)
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#38BDF8")
+            paint.color = Color.parseColor("#6366F1")
             canvas.drawRoundRect(RectF(10f, 10f, 1014f, 502f), 32f, 32f, paint)
 
             // Live Text Input Bar
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#162035")
+            paint.color = Color.parseColor("#1B2236")
             canvas.drawRoundRect(RectF(30f, 25f, 994f, 85f), 16f, 16f, paint)
 
-            paint.textSize = 30f
-            paint.color = Color.parseColor("#00E5FF")
-            canvas.drawText("Digitar: ${textInputManager.getCurrentText()}_", 50f, 65f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.8f
+            paint.color = Color.parseColor("#818CF8")
+            canvas.drawRoundRect(RectF(30f, 25f, 994f, 85f), 16f, 16f, paint)
 
-            // Close button top-right
-            paint.color = Color.parseColor("#94A3B8")
+            paint.style = Paint.Style.FILL
+            paint.textSize = 30f
+            paint.color = Color.parseColor("#F472B6") // Soft Rose prompt
+            canvas.drawText("Digitar: ", 50f, 65f, paint)
+
+            paint.color = Color.parseColor("#F8FAFC")
+            canvas.drawText("${textInputManager.getCurrentText()}_", 175f, 65f, paint)
+
+            // Close button top-right (Coral/Red accent)
+            paint.color = Color.parseColor("#FB7185")
             paint.textSize = 24f
             canvas.drawText("✕ Fechar", 880f, 65f, paint)
 
@@ -981,26 +1040,33 @@ class VRRenderer(
                     val btn = keyboardButtons.getOrNull(keyIdx)
                     val isHovered = btn?.isHovered == true
 
-                    // Key background
+                    val isSpecial = keyChar in listOf("ENTER", "SPACE", "SHIFT", "shift", "?123", "ABC", "DEL")
+
+                    // Key background with richer palette
                     paint.style = Paint.Style.FILL
                     paint.color = when {
-                        keyChar in listOf("ENTER", "SPACE", "SHIFT", "shift", "?123", "ABC", "DEL") -> {
-                            if (isHovered) Color.parseColor("#1E3A8A") else Color.parseColor("#172554")
-                        }
-                        isHovered -> Color.parseColor("#1E2D4A")
-                        else -> Color.parseColor("#151E32")
+                        keyChar == "ENTER" -> if (isHovered) Color.parseColor("#059669") else Color.parseColor("#047857")
+                        keyChar == "DEL" -> if (isHovered) Color.parseColor("#E11D48") else Color.parseColor("#BE123C")
+                        isSpecial -> if (isHovered) Color.parseColor("#4338CA") else Color.parseColor("#312E81")
+                        isHovered -> Color.parseColor("#334155")
+                        else -> Color.parseColor("#1E293B")
                     }
-                    canvas.drawRoundRect(RectF(kx + 4f, ky + 4f, kx + kw - 4f, ky + kh - 4f), 12f, 12f, paint)
+                    canvas.drawRoundRect(RectF(kx + 4f, ky + 4f, kx + kw - 4f, ky + kh - 4f), 14f, 14f, paint)
 
                     // Key border
                     paint.style = Paint.Style.STROKE
                     paint.strokeWidth = if (isHovered) 3.5f else 1.5f
-                    paint.color = if (isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#25344F")
-                    canvas.drawRoundRect(RectF(kx + 4f, ky + 4f, kx + kw - 4f, ky + kh - 4f), 12f, 12f, paint)
+                    paint.color = when {
+                        keyChar == "ENTER" -> Color.parseColor("#10B981")
+                        keyChar == "DEL" -> Color.parseColor("#F43F5E")
+                        isHovered -> Color.parseColor("#A855F7")
+                        else -> Color.parseColor("#334155")
+                    }
+                    canvas.drawRoundRect(RectF(kx + 4f, ky + 4f, kx + kw - 4f, ky + kh - 4f), 14f, 14f, paint)
 
-                    // Dwell progress bar inside key
+                    // Dwell progress bar inside key (radiant violet/emerald)
                     if (isHovered && btn != null && btn.hoverProgress > 0f) {
-                        paint.color = Color.parseColor("#00E5FF")
+                        paint.color = if (keyChar == "ENTER") Color.parseColor("#34D399") else Color.parseColor("#C084FC")
                         paint.strokeWidth = 6f
                         val progW = (kw - 16f) * btn.hoverProgress
                         canvas.drawLine(kx + 8f, ky + kh - 6f, kx + 8f + progW, ky + kh - 6f, paint)
@@ -1009,7 +1075,7 @@ class VRRenderer(
                     // Key Text
                     paint.style = Paint.Style.FILL
                     paint.textSize = if (keyChar.length > 2) 22f else 28f
-                    paint.color = if (isHovered) Color.parseColor("#00E5FF") else Color.parseColor("#F8FAFC")
+                    paint.color = if (isHovered) Color.parseColor("#FFFFFF") else Color.parseColor("#F1F5F9")
                     val tw = paint.measureText(keyChar)
                     canvas.drawText(keyChar, kx + (kw - tw) / 2f, ky + kh / 2f + 9f, paint)
 
@@ -1030,9 +1096,9 @@ class VRRenderer(
         // Lunar Bar
         barPanel = VRPanel("lunar_bar", 0.0f, -0.28f, -1.35f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
 
-        // Browser & URL Panels (1024x768 4:3 native ratio with clean scale)
-        urlPanel = VRPanel("url_panel", 0.0f, 0.48f, -1.35f, 1.25f, 0.14f, 1024, 128).also { it.initGL() }
-        browserPanel = VRPanel("browser_panel", 0.0f, 0.08f, -1.35f, 1.25f, 0.75f, 1024, 768).also { it.initGL() }
+        // Browser & URL Panels (16:10 spacious wide layout with native 1280x800 resolution)
+        urlPanel = VRPanel("url_panel", 0.0f, 0.58f, -1.45f, 1.60f, 0.15f, 1280, 120).also { it.initGL() }
+        browserPanel = VRPanel("browser_panel", 0.0f, 0.08f, -1.45f, 1.60f, 1.00f, 1280, 800).also { it.initGL() }
 
         // Settings Panel
         settingsVRPanel = VRPanel("settings_panel", 0.0f, 0.10f, -1.30f, 1.10f, 0.82f, 1024, 768).also { it.initGL() }

@@ -15,8 +15,8 @@ class BrowserView(private val context: Context, private val controller: BrowserC
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
-    val width = 1024
-    val height = 768
+    val width = 1280
+    val height = 800
     private val webViewBitmap: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     private val bitmapLock = Any()
     @Volatile private var isDirty: Boolean = true
@@ -74,12 +74,45 @@ class BrowserView(private val context: Context, private val controller: BrowserC
             try {
                 val wv = webView ?: return@post
                 val now = SystemClock.uptimeMillis()
-                val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, px, py, 0)
-                val up = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, px, py, 0)
+                
+                // Emulate genuine finger tap sequence with proper coordinates and properties
+                val downProps = arrayOf(MotionEvent.PointerProperties().apply {
+                    id = 0
+                    toolType = MotionEvent.TOOL_TYPE_FINGER
+                })
+                val downCoords = arrayOf(MotionEvent.PointerCoords().apply {
+                    x = px
+                    y = py
+                    pressure = 1.0f
+                    size = 1.0f
+                })
+
+                val down = MotionEvent.obtain(
+                    now, now, MotionEvent.ACTION_DOWN,
+                    1, downProps, downCoords, 0, 0, 1.0f, 1.0f, 0, 0, 0, 0
+                )
+                val up = MotionEvent.obtain(
+                    now, now + 65, MotionEvent.ACTION_UP,
+                    1, downProps, downCoords, 0, 0, 1.0f, 1.0f, 0, 0, 0, 0
+                )
+
                 wv.dispatchTouchEvent(down)
                 wv.dispatchTouchEvent(up)
                 down.recycle()
                 up.recycle()
+
+                // Execute JavaScript elementFromPoint tap for HTML elements that only listen to click / focus events
+                val jsClick = """
+                    (function() {
+                        var elem = document.elementFromPoint($px, $py);
+                        if (elem) {
+                            elem.focus();
+                            elem.click();
+                        }
+                    })();
+                """.trimIndent()
+                wv.evaluateJavascript(jsClick, null)
+
                 isDirty = true
             } catch (_: Exception) {}
         }
