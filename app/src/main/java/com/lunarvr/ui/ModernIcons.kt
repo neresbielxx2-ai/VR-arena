@@ -269,4 +269,31 @@ object ModernIcons {
         paint.color = oldColor
         paint.style = oldStyle
     }
+}    // Circular Close '✕' Button
+    fun drawCloseButton(canvas: Canvas, paint: Paint, cx: Float, cy: Float, radius: Float, isHovered: Boolean) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+
+        paint.style = Paint.Style.FILL
+        paint.color = if (isHovered) Color.parseColor("#EF4444") else Color.parseColor("#334155")
+        canvas.drawCircle(cx, cy, radius, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.5f
+        paint.color = if (isHovered) Color.WHITE else Color.parseColor("#94A3B8")
+        canvas.drawCircle(cx, cy, radius, paint)
+
+        // Draw 'X'
+        val cross = radius * 0.45f
+        paint.strokeWidth = 3f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.color = Color.WHITE
+        canvas.drawLine(cx - cross, cy - cross, cx + cross, cy + cross, paint)
+        canvas.drawLine(cx - cross, cy + cross, cx + cross, cy - cross, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+    }
 }

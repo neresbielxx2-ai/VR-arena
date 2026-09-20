@@ -17,6 +17,7 @@ import com.lunarvr.browser.BrowserView
 import com.lunarvr.browser.URLBar
 import com.lunarvr.environment.EnvironmentBackdrop
 import com.lunarvr.environment.CustomModelManager
+import com.lunarvr.system.ConfigManager
 import com.lunarvr.environment.EnvironmentManager
 import com.lunarvr.ui.EnvViewMode
 import com.lunarvr.handtracking.InteractionManager
@@ -63,21 +64,47 @@ class VRRenderer(
         onRecenter = { vrSession.recenterManager.triggerRecenter() }
     )
 
+    val configManager = ConfigManager(context)
+
     lateinit var settingsPanel: SettingsPanel
 
     init {
-        settingsPanel = SettingsPanel(vrSession, lunarBar) {
-            interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
-            refreshInteractiveElements()
-        }
+        settingsPanel = SettingsPanel(
+            vrSession = vrSession,
+            lunarBar = lunarBar,
+            configManager = configManager,
+            onResetToDefaults = {
+                environmentManager.setEnvironment(com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW)
+                customModelManager.clearCustomModel()
+                interactionManager.userDwellTimeMs = 2000L
+                currentDestination = null
+                refreshInteractiveElements()
+                showNotification("Configurações resetadas para o padrão!")
+            },
+            onCloseSettings = {
+                currentDestination = null
+                refreshInteractiveElements()
+            },
+            onSettingChanged = {
+                interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+                refreshInteractiveElements()
+            }
+        )
     }
 
-    val customModelManager = CustomModelManager()
+    val customModelManager = CustomModelManager(context, configManager)
     val environmentPanel = EnvironmentPanel(
         envManager = environmentManager,
         customModelManager = customModelManager,
         onEnvironmentChanged = {
             refreshInteractiveElements()
+        },
+        onCloseEnvironment = {
+            currentDestination = null
+            refreshInteractiveElements()
+        },
+        onRequestNativeFilePicker = {
+            requestNativeModelPicker()
         },
         onOpenKeyboardForPosition = { axis, currentVal, onSubmitted ->
             openKeyboardForWebInput(currentVal) { input ->
@@ -102,6 +129,10 @@ class VRRenderer(
         onRegeneratePin = {
             vrStreamServer.regeneratePin()
             showNotification("Novo Código PC: " + vrStreamServer.connectionPin)
+        },
+        onCloseHome = {
+            currentDestination = null
+            refreshInteractiveElements()
         }
     )
 
@@ -126,7 +157,12 @@ class VRRenderer(
         onForwardClick = { browserView?.goForward() },
         onRefreshClick = { browserView?.reload() },
         onHomeClick = { browserView?.loadUrl("https://html.duckduckgo.com/html/") },
-        onResizeClick = { cycleBrowserScale() }
+        onResizeClick = { cycleBrowserScale() },
+        onCloseClick = {
+            currentDestination = null
+            vrKeyboard.isVisible = false
+            refreshInteractiveElements()
+        }
     )
 
     // Interactive Touch surface for clicking links/buttons directly inside the web browser with 2s gaze!
@@ -193,7 +229,7 @@ class VRRenderer(
     private var screenHeight = 1080
 
     // Navigation State
-    private var currentDestination = LunarNavDestination.HOME
+    private var currentDestination: LunarNavDestination? = null
 
     private val headViewMatrix = FloatArray(16)
     private val viewProjectionMatrix = FloatArray(16)
@@ -208,6 +244,22 @@ class VRRenderer(
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
+            // Restore user persisted settings
+            interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+            lunarBar.currentStyle = com.lunarvr.ui.BarStyle.values()[configManager.barStyleOrdinal.coerceIn(0, com.lunarvr.ui.BarStyle.values().size - 1)]
+            lunarBar.currentColorTheme = com.lunarvr.ui.BarColorTheme.values()[configManager.barColorOrdinal.coerceIn(0, com.lunarvr.ui.BarColorTheme.values().size - 1)]
+            vrSession.headTracking.invertYaw = configManager.invertX
+            vrSession.headTracking.invertPitch = configManager.invertY
+            if (configManager.economicMode) {
+                vrSession.performanceManager.applyLevel(com.lunarvr.system.PerformanceLevel.ECONOMIC)
+            }
+            if (!configManager.isCustomModelActive) {
+                try {
+                    val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
+                    environmentManager.setEnvironment(savedEnv)
+                } catch (_: Exception) {}
+            }
+
             val clear = environmentManager.getClearColor()
             GLES20.glClearColor(clear[0], clear[1], clear[2], clear[3])
             GLES20.glEnable(GLES20.GL_BLEND)
@@ -486,6 +538,22 @@ class VRRenderer(
 
     override fun onDrawFrame(gl: GL10?) {
         try {
+            // Restore user persisted settings
+            interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+            lunarBar.currentStyle = com.lunarvr.ui.BarStyle.values()[configManager.barStyleOrdinal.coerceIn(0, com.lunarvr.ui.BarStyle.values().size - 1)]
+            lunarBar.currentColorTheme = com.lunarvr.ui.BarColorTheme.values()[configManager.barColorOrdinal.coerceIn(0, com.lunarvr.ui.BarColorTheme.values().size - 1)]
+            vrSession.headTracking.invertYaw = configManager.invertX
+            vrSession.headTracking.invertPitch = configManager.invertY
+            if (configManager.economicMode) {
+                vrSession.performanceManager.applyLevel(com.lunarvr.system.PerformanceLevel.ECONOMIC)
+            }
+            if (!configManager.isCustomModelActive) {
+                try {
+                    val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
+                    environmentManager.setEnvironment(savedEnv)
+                } catch (_: Exception) {}
+            }
+
             val clear = environmentManager.getClearColor()
             GLES20.glClearColor(clear[0], clear[1], clear[2], clear[3])
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
@@ -819,12 +887,13 @@ class VRRenderer(
         if (dest != LunarNavDestination.BROWSER) {
             isYouTubeMode = false
         }
-        if (currentDestination == dest && dest != LunarNavDestination.HOME) {
-            currentDestination = LunarNavDestination.HOME
+        if (currentDestination == dest) {
+            currentDestination = null
         } else {
             currentDestination = dest
         }
 
+        homePanel.isVisible = (currentDestination == LunarNavDestination.HOME)
         settingsPanel.isVisible = (currentDestination == LunarNavDestination.SETTINGS)
         environmentPanel.isVisible = (currentDestination == LunarNavDestination.ENVIRONMENTS)
         if (currentDestination != LunarNavDestination.BROWSER) {
@@ -1129,11 +1198,15 @@ class VRRenderer(
             paint.color = Color.parseColor("#334155")
             canvas.drawRoundRect(mainRect, 36f, 36f, paint)
 
+            // Top-left Close Button '✕'
+            val closeBtn = homePanel.buttons.find { it.id == "btn_close_home_top_left" }
+            ModernIcons.drawCloseButton(canvas, paint, 50f, 65f, 22f, closeBtn?.isHovered == true)
+
             // Header Section: Title "Biblioteca / Início" and Meta Quest Inspired Capsule Tabs
             paint.style = Paint.Style.FILL
             paint.textSize = 34f
             paint.color = Color.parseColor("#F8FAFC")
-            canvas.drawText("Biblioteca", 50f, 75f, paint)
+            canvas.drawText("Biblioteca", 95f, 75f, paint)
 
             // Draw Meta Quest style pill segment for Tabs: [ Apps ]  [ Jogos ]  [ Conexão PC ]
             val tabContainerRect = RectF(280f, 32f, 940f, 96f)
@@ -1362,11 +1435,15 @@ class VRRenderer(
             paint.color = Color.parseColor("#475569")
             canvas.drawRoundRect(RectF(10f, 10f, 1270f, 110f), 28f, 28f, paint)
 
+            // Top-left Close Button '✕'
+            val closeUrlBtn = urlBar.buttons.find { it.id == "url_close_top_left" }
+            ModernIcons.drawCloseButton(canvas, paint, 38f, 60f, 20f, closeUrlBtn?.isHovered == true)
+
             // Navigation icons (spacious layout)
             paint.style = Paint.Style.FILL
-            paint.textSize = 34f
+            paint.textSize = 32f
             paint.color = Color.parseColor("#E2E8F0")
-            canvas.drawText("◀    ▶    ↻    ✦", 42f, 72f, paint)
+            canvas.drawText("◀    ▶    ↻    ✦", 82f, 70f, paint)
 
             // Interactive Search/URL field (expanded width: 340f to 1040f)
             paint.color = Color.parseColor("#1E293B")
@@ -1419,14 +1496,18 @@ class VRRenderer(
             canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
 
             when (environmentPanel.viewMode) {
-                EnvViewMode.GRID -> {
+                EnvViewMode.MAIN_LIST -> {
+                    // Top-left Close Button '✕'
+                    val closeEnvBtn = environmentPanel.buttons.find { it.id == "btn_close_env_top_left" }
+                    ModernIcons.drawCloseButton(canvas, paint, 48f, 65f, 20f, closeEnvBtn?.isHovered == true)
+
                     // Header Icon and Title
-                    ModernIcons.drawEnvironmentIcon(canvas, paint, 60f, 65f, 34f, Color.parseColor("#00E5FF"))
+                    ModernIcons.drawEnvironmentIcon(canvas, paint, 92f, 65f, 30f, Color.parseColor("#00E5FF"))
 
                     paint.style = Paint.Style.FILL
-                    paint.textSize = 34f
+                    paint.textSize = 32f
                     paint.color = Color.parseColor("#00E5FF")
-                    canvas.drawText("CENÁRIOS VIRTUAIS VR", 100f, 75f, paint)
+                    canvas.drawText("CENÁRIOS VIRTUAIS VR", 125f, 75f, paint)
 
                     // Description
                     paint.textSize = 24f
@@ -1497,44 +1578,7 @@ class VRRenderer(
                     canvas.drawText("➕ Importar Cenário 3D (.glb / .obj / .gltf)", 75f, 545f, paint)
                 }
 
-                EnvViewMode.FILE_PICKER -> {
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 32f
-                    paint.color = Color.parseColor("#00E5FF")
-                    canvas.drawText("GERENCIADOR DE ARQUIVOS VR", 60f, 75f, paint)
 
-                    paint.textSize = 22f
-                    paint.color = Color.parseColor("#94A3B8")
-                    canvas.drawText("Modelos 3D encontrados em Downloads e Documentos:", 60f, 120f, paint)
-
-                    val files = customModelManager.getAvailableModelFiles()
-                    if (files.isEmpty()) {
-                        paint.textSize = 26f
-                        paint.color = Color.parseColor("#F59E0B")
-                        canvas.drawText("Nenhum arquivo .glb ou .obj encontrado nas pastas.", 60f, 240f, paint)
-                        paint.textSize = 20f
-                        paint.color = Color.parseColor("#94A3B8")
-                        canvas.drawText("Coloque seus arquivos 3D na pasta Download ou Documents do celular.", 60f, 290f, paint)
-                    } else {
-                        for (i in 0 until Math.min(files.size, 4)) {
-                            val f = files[i]
-                            val fy = 160f + i * 85f
-                            paint.style = Paint.Style.FILL
-                            paint.color = Color.parseColor("#1E293B")
-                            canvas.drawRoundRect(RectF(60f, fy, 960f, fy + 70f), 15f, 15f, paint)
-
-                            paint.style = Paint.Style.STROKE
-                            paint.strokeWidth = 2f
-                            paint.color = Color.parseColor("#38BDF8")
-                            canvas.drawRoundRect(RectF(60f, fy, 960f, fy + 70f), 15f, 15f, paint)
-
-                            paint.style = Paint.Style.FILL
-                            paint.textSize = 24f
-                            paint.color = Color.parseColor("#F8FAFC")
-                            canvas.drawText("📁 ${f.name}", 85f, fy + 45f, paint)
-                        }
-                    }
-                }
 
                 EnvViewMode.CAMERA_POS_CONFIG -> {
                     paint.style = Paint.Style.FILL

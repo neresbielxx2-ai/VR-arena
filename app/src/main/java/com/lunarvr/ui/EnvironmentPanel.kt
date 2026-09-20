@@ -6,8 +6,7 @@ import com.lunarvr.environment.VREnvironmentType
 import java.io.File
 
 enum class EnvViewMode {
-    GRID,
-    FILE_PICKER,
+    MAIN_LIST,
     CAMERA_POS_CONFIG
 }
 
@@ -15,10 +14,12 @@ class EnvironmentPanel(
     private val envManager: EnvironmentManager,
     val customModelManager: CustomModelManager,
     private val onEnvironmentChanged: () -> Unit,
+    private val onCloseEnvironment: () -> Unit,
+    private val onRequestNativeFilePicker: () -> Unit,
     private val onOpenKeyboardForPosition: (axis: String, currentVal: String, onValSubmitted: (String) -> Unit) -> Unit
 ) {
     var isVisible: Boolean = false
-    var viewMode: EnvViewMode = EnvViewMode.GRID
+    var viewMode: EnvViewMode = EnvViewMode.MAIN_LIST
 
     val buttons = mutableListOf<AppButton>()
 
@@ -41,11 +42,19 @@ class EnvironmentPanel(
 
         val zPos = -1.30f
 
+        // Top-left distinct close '✕' button for the panel (does not overlap content)
+        buttons.add(
+            AppButton("btn_close_env_top_left", "✕", centerX - 0.49f, centerY + 0.31f, zPos, 0.08f, 0.08f) {
+                isVisible = false
+                onCloseEnvironment()
+            }
+        )
+
         when (viewMode) {
-            EnvViewMode.GRID -> {
+            EnvViewMode.MAIN_LIST -> {
                 val startY = centerY + 0.18f
                 val btnW = 0.44f
-                val btnH = 0.11f
+                val btnH = 0.10f
                 val colLeft = centerX - 0.24f
                 val colRight = centerX + 0.24f
 
@@ -54,7 +63,7 @@ class EnvironmentPanel(
                 for (i in envs.indices) {
                     val env = envs[i]
                     val bx = if (i % 2 == 0) colLeft else colRight
-                    val by = startY - (i / 2) * 0.13f
+                    val by = startY - (i / 2) * 0.12f
                     val isCurrent = !customModelManager.isCustomModelActive && (env == envManager.currentEnvironment)
                     val label = "${if (isCurrent) "✓ " else ""}${env.displayName}"
 
@@ -62,69 +71,43 @@ class EnvironmentPanel(
                         AppButton("btn_env_${env.name}", label, bx, by, zPos, btnW, btnH) {
                             customModelManager.clearCustomModel()
                             envManager.setEnvironment(env)
+                            customModelManager.configManager.activeEnvironmentName = env.name
                             setupButtons(currentCenterX, currentCenterY)
                             onEnvironmentChanged()
                         }
                     )
                 }
 
-                // Add "+" Button to import custom 3D model (GLB, OBJ)
-                val plusY = startY - 0.27f
-                buttons.add(
-                    AppButton("btn_add_custom_env", "➕ Adicionar Cenário 3D (.glb / .obj)", centerX - 0.14f, plusY, zPos, 0.44f, 0.08f) {
-                        viewMode = EnvViewMode.FILE_PICKER
-                        setupButtons(currentCenterX, currentCenterY)
-                        onEnvironmentChanged()
-                    }
-                )
+                // List imported custom 3D models if any exist
+                val importedModels = customModelManager.getImportedModels()
+                val customStartY = startY - 0.25f
 
-                // Close button at bottom
-                buttons.add(
-                    AppButton("btn_close_env", "✕ Fechar", centerX + 0.26f, plusY, zPos, 0.22f, 0.08f) {
-                        isVisible = false
-                        onEnvironmentChanged()
-                    }
-                )
-            }
+                for (i in 0 until Math.min(importedModels.size, 2)) {
+                    val model = importedModels[i]
+                    val isCur = customModelManager.isCustomModelActive && customModelManager.activeModelName == model.name
+                    val label = "${if (isCur) "✓ 3D: " else "3D: "}${model.name.take(22)}"
+                    val cyPos = customStartY - i * 0.085f
 
-            EnvViewMode.FILE_PICKER -> {
-                val startY = centerY + 0.18f
-                val files = customModelManager.getAvailableModelFiles()
-
-                if (files.isEmpty()) {
-                    // Back button
                     buttons.add(
-                        AppButton("btn_file_back", "◀ Voltar aos Cenários", centerX, centerY - 0.15f, zPos, 0.45f, 0.08f) {
-                            viewMode = EnvViewMode.GRID
-                            setupButtons(currentCenterX, currentCenterY)
-                            onEnvironmentChanged()
-                        }
-                    )
-                } else {
-                    for (i in 0 until Math.min(files.size, 4)) {
-                        val file = files[i]
-                        val by = startY - i * 0.09f
-                        val label = "📁 ${file.name.take(28)}"
-
-                        buttons.add(
-                            AppButton("btn_select_file_$i", label, centerX, by, zPos, 0.65f, 0.075f) {
-                                selectedFile = file
-                                viewMode = EnvViewMode.CAMERA_POS_CONFIG
-                                setupButtons(currentCenterX, currentCenterY)
-                                onEnvironmentChanged()
-                            }
-                        )
-                    }
-
-                    // Back button at bottom
-                    buttons.add(
-                        AppButton("btn_file_back", "◀ Voltar", centerX, centerY - 0.24f, zPos, 0.35f, 0.075f) {
-                            viewMode = EnvViewMode.GRID
+                        AppButton("btn_custom_model_$i", label, centerX - 0.12f, cyPos, zPos, 0.50f, 0.075f) {
+                            selectedFile = model.file
+                            inputPosX = customModelManager.cameraOffset.posX.toString()
+                            inputPosY = customModelManager.cameraOffset.posY.toString()
+                            inputPosZ = customModelManager.cameraOffset.posZ.toString()
+                            viewMode = EnvViewMode.CAMERA_POS_CONFIG
                             setupButtons(currentCenterX, currentCenterY)
                             onEnvironmentChanged()
                         }
                     )
                 }
+
+                // Import Button (triggers Android system file manager)
+                val importY = if (importedModels.isEmpty()) customStartY else customStartY - Math.min(importedModels.size, 2) * 0.085f
+                buttons.add(
+                    AppButton("btn_import_native", "➕ Importar Modelo 3D (.glb / .obj)", centerX, importY, zPos, 0.52f, 0.075f) {
+                        onRequestNativeFilePicker()
+                    }
+                )
             }
 
             EnvViewMode.CAMERA_POS_CONFIG -> {
@@ -165,28 +148,27 @@ class EnvironmentPanel(
 
                 // Save button
                 buttons.add(
-                    AppButton("btn_save_model", "💾 Salvar e Carregar Cenário", centerX - 0.18f, startY - 0.16f, zPos, 0.40f, 0.08f) {
+                    AppButton("btn_save_model", "💾 Confirmar e Carregar", centerX - 0.20f, startY - 0.16f, zPos, 0.38f, 0.08f) {
                         selectedFile?.let { file ->
                             val x = inputPosX.toFloatOrNull() ?: 0f
                             val y = inputPosY.toFloatOrNull() ?: 0f
                             val z = inputPosZ.toFloatOrNull() ?: 0f
                             customModelManager.loadCustomModel(file, x, y, z)
                         }
-                        viewMode = EnvViewMode.GRID
+                        viewMode = EnvViewMode.MAIN_LIST
                         setupButtons(currentCenterX, currentCenterY)
                         onEnvironmentChanged()
                     }
                 )
 
-                // Skip / Auto button (Pular e deixar o VR decidir)
+                // Auto position skip button
                 buttons.add(
-                    AppButton("btn_skip_pos", "⚡ Pular (Auto Posição)", centerX + 0.24f, startY - 0.16f, zPos, 0.38f, 0.08f) {
+                    AppButton("btn_skip_pos", "⚡ Pular (Auto Posição)", centerX + 0.22f, startY - 0.16f, zPos, 0.38f, 0.08f) {
                         selectedFile?.let { file ->
                             customModelManager.loadCustomModel(file, 0f, 0f, 0f)
-                            val autoPos = customModelManager.autoPositionCamera()
-                            customModelManager.cameraOffset = autoPos
+                            customModelManager.autoPositionCamera()
                         }
-                        viewMode = EnvViewMode.GRID
+                        viewMode = EnvViewMode.MAIN_LIST
                         setupButtons(currentCenterX, currentCenterY)
                         onEnvironmentChanged()
                     }
@@ -194,8 +176,8 @@ class EnvironmentPanel(
 
                 // Cancel button
                 buttons.add(
-                    AppButton("btn_cancel_pos", "✕ Cancelar", centerX, startY - 0.26f, zPos, 0.28f, 0.07f) {
-                        viewMode = EnvViewMode.FILE_PICKER
+                    AppButton("btn_cancel_pos", "◀ Voltar", centerX, startY - 0.26f, zPos, 0.28f, 0.07f) {
+                        viewMode = EnvViewMode.MAIN_LIST
                         setupButtons(currentCenterX, currentCenterY)
                         onEnvironmentChanged()
                     }

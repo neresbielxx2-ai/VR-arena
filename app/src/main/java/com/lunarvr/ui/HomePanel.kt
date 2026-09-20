@@ -9,9 +9,10 @@ enum class HomeTab {
 class HomePanel(
     private val onOpenYouTube: () -> Unit,
     private val onTabChanged: () -> Unit,
-    private val onRegeneratePin: () -> Unit
+    private val onRegeneratePin: () -> Unit,
+    private val onCloseHome: () -> Unit
 ) {
-    var isVisible: Boolean = true
+    var isVisible: Boolean = false
     var currentTab: HomeTab = HomeTab.APPS
 
     var currentCenterX: Float = 0f
@@ -29,6 +30,14 @@ class HomePanel(
         currentCenterY = centerY
         currentCenterZ = centerZ
         buttons.clear()
+
+        // Close button at top-left
+        buttons.add(
+            AppButton("btn_close_home_top_left", "✕", centerX - 0.52f, centerY + 0.35f, centerZ, 0.08f, 0.08f) {
+                isVisible = false
+                onCloseHome()
+            }
+        )
 
         // 3 Tab Selector Buttons at the top: [ Apps ]  [ Jogos ]  [ Conexão PC ]
         val tabW = 0.34f

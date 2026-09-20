@@ -8,7 +8,8 @@ class URLBar(
     private val onForwardClick: () -> Unit,
     private val onRefreshClick: () -> Unit,
     private val onHomeClick: () -> Unit,
-    private val onResizeClick: () -> Unit
+    private val onResizeClick: () -> Unit,
+    private val onCloseClick: () -> Unit
 ) {
     var displayUrl: String = "https://html.duckduckgo.com/html/"
     var scaleName: String = "1.0x"
@@ -23,6 +24,9 @@ class URLBar(
         buttons.clear()
         val zPos = -1.45f
         val yPos = centerY
+
+        // Close button at top-left
+        buttons.add(AppButton("url_close_top_left", "✕", centerX - 0.76f, yPos, zPos, 0.08f, 0.08f) { onCloseClick() })
 
         // Navigation controls
         buttons.add(AppButton("url_back", "◀", centerX - 0.65f, yPos, zPos, 0.08f, 0.08f) { onBackClick() })
