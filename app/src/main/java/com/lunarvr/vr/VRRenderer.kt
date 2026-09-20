@@ -1780,6 +1780,7 @@ class VRRenderer(
                     com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
                     com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
                     com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
+                    com.lunarvr.environment.VREnvironmentType.PASSTHROUGH_CAM -> Pair("#334155", "#00E5FF")
                 }
 
                 paint.style = Paint.Style.FILL
