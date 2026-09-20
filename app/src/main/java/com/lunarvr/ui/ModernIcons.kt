@@ -269,7 +269,8 @@ object ModernIcons {
         paint.color = oldColor
         paint.style = oldStyle
     }
-}    // Circular Close '✕' Button
+
+    // Circular Close '✕' Button
     fun drawCloseButton(canvas: Canvas, paint: Paint, cx: Float, cy: Float, radius: Float, isHovered: Boolean) {
         val oldColor = paint.color
         val oldStyle = paint.style
