@@ -46,8 +46,7 @@ jobs:
       - name: Output Compiler Error
         if: steps.compile_step.outcome == 'failure'
         run: |
-          echo "::: KOTLIN COMPILER LOG :::"
-          cat kotlin_compile.log
+          grep -C 3 -E "e: |error:|FAILED" kotlin_compile.log | head -n 80
           exit 1
 
       - name: Build Release APK (Unsigned)
