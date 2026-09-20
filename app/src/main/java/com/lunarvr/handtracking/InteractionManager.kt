@@ -42,6 +42,7 @@ class InteractionManager {
     // Customizable Dwell Speed in Settings:
     // User configurable dwell time in milliseconds (default 2000ms = 2.0s)
     var userDwellTimeMs: Long = 2000L
+    var onElementClicked: ((InteractableElement) -> Unit)? = null
 
     var lastHitElementId: String? = null
         private set
@@ -109,6 +110,7 @@ class InteractionManager {
 
             if (elapsed >= requiredDuration) {
                 // Execute click!
+                onElementClicked?.invoke(hit)
                 hit.onClick()
                 // Pause slightly after click so it doesn't instantly double trigger
                 hoverStartTime = now + 400L

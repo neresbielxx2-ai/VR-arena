@@ -39,9 +39,12 @@ class URLBar(
             onUrlClick()
         })
 
-        // Corner Resize button
-        buttons.add(AppButton("url_resize", "⤢ $scaleName", centerX + 0.72f, yPos, zPos, 0.10f, 0.07f) {
-            onResizeClick()
+        // Scaling buttons: '-' and '+'
+        buttons.add(AppButton("url_scale_down", "－", centerX + 0.65f, yPos, zPos, 0.06f, 0.07f) {
+            // scale down in renderer
+        })
+        buttons.add(AppButton("url_scale_up", "＋", centerX + 0.73f, yPos, zPos, 0.06f, 0.07f) {
+            // scale up in renderer
         })
     }
 }

@@ -254,6 +254,38 @@ object ModernIcons {
         paint.style = oldStyle
     }
 
+    // Camera Passthrough Icon
+    fun drawCameraPassthroughIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+
+        paint.color = color
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.5f
+
+        val halfW = size * 0.7f
+        val halfH = size * 0.45f
+        val bodyRect = RectF(cx - halfW, cy - halfH + 4f, cx + halfW, cy + halfH)
+        canvas.drawRoundRect(bodyRect, 10f, 10f, paint)
+
+        // Lens
+        canvas.drawCircle(cx, cy + 2f, halfH * 0.55f, paint)
+
+        // Flash / viewfinder bump
+        val bump = Path().apply {
+            moveTo(cx - 16f, cy - halfH + 4f)
+            lineTo(cx - 10f, cy - halfH - 6f)
+            lineTo(cx + 10f, cy - halfH - 6f)
+            lineTo(cx + 16f, cy - halfH + 4f)
+        }
+        canvas.drawPath(bump, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+    }
+
     // YouTube Icon (clean red rounded rectangle with white play triangle)
     fun drawYouTubeIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float) {
         val oldColor = paint.color

@@ -11,6 +11,10 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.util.Log
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.SoundPool
+import android.media.ToneGenerator
 import com.lunarvr.browser.BrowserController
 import com.lunarvr.browser.BrowserTouchElement
 import com.lunarvr.browser.BrowserView
@@ -48,6 +52,20 @@ class VRRenderer(
     private val context: Context,
     private val vrSession: VRSession
 ) : GLSurfaceView.Renderer {
+    // Native VR Click Sound Synthesizer (ToneGenerator / Audio feedback on gaze aim click)
+    private var toneGen: ToneGenerator? = null
+    init {
+        try {
+            toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 75)
+        } catch (_: Exception) {}
+    }
+
+    fun playClickSound() {
+        try {
+            toneGen?.startTone(ToneGenerator.TONE_PROP_BEEP, 35)
+        } catch (_: Exception) {}
+    }
+
 
     // Interaction & Gaze Pointing
     val interactionManager = InteractionManager()
@@ -74,16 +92,19 @@ class VRRenderer(
             onResetToDefaults = {
                 environmentManager.setEnvironment(com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW)
                 interactionManager.userDwellTimeMs = 2000L
-                currentDestination = null
+                openDestinations.clear(); currentDestination = null
                 refreshInteractiveElements()
                 showNotification("Configurações resetadas para o padrão!")
             },
             onCloseSettings = {
-                currentDestination = null
+                openDestinations.clear(); currentDestination = null
                 refreshInteractiveElements()
             },
             onSettingChanged = {
                 interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+            interactionManager.onElementClicked = {
+                playClickSound()
+            }
                 refreshInteractiveElements()
             }
         )
@@ -92,10 +113,12 @@ class VRRenderer(
     val environmentPanel = EnvironmentPanel(
         envManager = environmentManager,
         onEnvironmentChanged = {
+            configManager.activeEnvironmentName = environmentManager.currentEnvironment.name
+            showNotification("Cenário: ${environmentManager.currentEnvironment.displayName}")
             refreshInteractiveElements()
         },
         onCloseEnvironment = {
-            currentDestination = null
+            openDestinations.clear(); currentDestination = null
             refreshInteractiveElements()
         }
     )
@@ -118,7 +141,7 @@ class VRRenderer(
             showNotification("Novo Código PC: " + vrStreamServer.connectionPin)
         },
         onCloseHome = {
-            currentDestination = null
+            openDestinations.clear(); currentDestination = null
             refreshInteractiveElements()
         }
     )
@@ -146,7 +169,7 @@ class VRRenderer(
         onHomeClick = { browserView?.loadUrl("https://html.duckduckgo.com/html/") },
         onResizeClick = { cycleBrowserScale() },
         onCloseClick = {
-            currentDestination = null
+            openDestinations.clear(); currentDestination = null
             vrKeyboard.isVisible = false
             refreshInteractiveElements()
         }
@@ -217,6 +240,17 @@ class VRRenderer(
 
     // Navigation State
     private var currentDestination: LunarNavDestination? = null
+    val openDestinations = mutableSetOf<LunarNavDestination>()
+
+    // Panel scale factors for +/- resizing
+    var browserScaleFactor: Float = 1.0f
+    var homeScaleFactor: Float = 1.0f
+    var settingsScaleFactor: Float = 1.0f
+    var envScaleFactor: Float = 1.0f
+
+    // Tab animation maps: entry animation (scale 0 -> 1)
+    private val tabOpenAnimProgress = mutableMapOf<LunarNavDestination, Float>()
+    private val tabOpenStartTime = mutableMapOf<LunarNavDestination, Long>()
 
     private val headViewMatrix = FloatArray(16)
     private val viewProjectionMatrix = FloatArray(16)
@@ -233,6 +267,9 @@ class VRRenderer(
         try {
             // Restore user persisted settings
             interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+            interactionManager.onElementClicked = {
+                playClickSound()
+            }
             lunarBar.currentStyle = com.lunarvr.ui.BarStyle.values()[configManager.barStyleOrdinal.coerceIn(0, com.lunarvr.ui.BarStyle.values().size - 1)]
             lunarBar.currentColorTheme = com.lunarvr.ui.BarColorTheme.values()[configManager.barColorOrdinal.coerceIn(0, com.lunarvr.ui.BarColorTheme.values().size - 1)]
             vrSession.headTracking.invertYaw = configManager.invertX
@@ -240,10 +277,8 @@ class VRRenderer(
             if (configManager.economicMode) {
                 vrSession.performanceManager.applyLevel(com.lunarvr.system.PerformanceLevel.ECONOMIC)
             }
-            try {
-                val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
-                environmentManager.setEnvironment(savedEnv)
-            } catch (_: Exception) {}
+            // Restore 6DoF setting
+            vrSession.headTracking.is6DofEnabled = configManager.is6DofEnabled
 
             val clear = environmentManager.getClearColor()
             GLES20.glClearColor(clear[0], clear[1], clear[2], clear[3])
@@ -264,6 +299,9 @@ class VRRenderer(
             }
             vrStreamServer.start()
             interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+            interactionManager.onElementClicked = {
+                playClickSound()
+            }
 
             // Dynamic Spherical Drag Handlers: smoothly reposition panels 360° around user without invisible walls!
             lunarBar.grabHandle.onDragUpdateSpherical = { yaw, height, dist ->
@@ -531,6 +569,9 @@ class VRRenderer(
         try {
             // Restore user persisted settings
             interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
+            interactionManager.onElementClicked = {
+                playClickSound()
+            }
             lunarBar.currentStyle = com.lunarvr.ui.BarStyle.values()[configManager.barStyleOrdinal.coerceIn(0, com.lunarvr.ui.BarStyle.values().size - 1)]
             lunarBar.currentColorTheme = com.lunarvr.ui.BarColorTheme.values()[configManager.barColorOrdinal.coerceIn(0, com.lunarvr.ui.BarColorTheme.values().size - 1)]
             vrSession.headTracking.invertYaw = configManager.invertX
@@ -538,10 +579,8 @@ class VRRenderer(
             if (configManager.economicMode) {
                 vrSession.performanceManager.applyLevel(com.lunarvr.system.PerformanceLevel.ECONOMIC)
             }
-            try {
-                val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
-                environmentManager.setEnvironment(savedEnv)
-            } catch (_: Exception) {}
+            // Restore 6DoF setting
+            vrSession.headTracking.is6DofEnabled = configManager.is6DofEnabled
 
             val clear = environmentManager.getClearColor()
             GLES20.glClearColor(clear[0], clear[1], clear[2], clear[3])
@@ -588,15 +627,75 @@ class VRRenderer(
                 homeResizeHandle.updateResize(gazeYawDeg)
             }
 
-            // Update dynamic UI textures
+            
+        // Handle +/- clicks on URL bar
+        val urlDown = urlBar.buttons.find { it.id == "url_scale_down" }
+        if (urlDown?.isHovered == true && urlDown.hoverProgress >= 0.99f) {
+            browserScaleFactor = (browserScaleFactor - 0.10f).coerceIn(0.6f, 1.8f)
+            applyBrowserScaleFactor(browserScaleFactor)
+            showNotification("Tamanho Navegador: ${String.format("%.1fx", browserScaleFactor)}")
+        }
+        val urlUp = urlBar.buttons.find { it.id == "url_scale_up" }
+        if (urlUp?.isHovered == true && urlUp.hoverProgress >= 0.99f) {
+            browserScaleFactor = (browserScaleFactor + 0.10f).coerceIn(0.6f, 1.8f)
+            applyBrowserScaleFactor(browserScaleFactor)
+            showNotification("Tamanho Navegador: ${String.format("%.1fx", browserScaleFactor)}")
+        }
+
+        // Handle +/- clicks on Home panel
+        val homeDown = homePanel.buttons.find { it.id == "btn_home_scale_down" }
+        if (homeDown?.isHovered == true && homeDown.hoverProgress >= 0.99f) {
+            homeScaleFactor = (homeScaleFactor - 0.10f).coerceIn(0.6f, 1.8f)
+            applyHomeTransform(homeScaleFactor)
+            showNotification("Tamanho Início: ${String.format("%.1fx", homeScaleFactor)}")
+        }
+        val homeUp = homePanel.buttons.find { it.id == "btn_home_scale_up" }
+        if (homeUp?.isHovered == true && homeUp.hoverProgress >= 0.99f) {
+            homeScaleFactor = (homeScaleFactor + 0.10f).coerceIn(0.6f, 1.8f)
+            applyHomeTransform(homeScaleFactor)
+            showNotification("Tamanho Início: ${String.format("%.1fx", homeScaleFactor)}")
+        }
+
+        // Handle +/- clicks on Settings panel
+        val setDown = settingsPanel.buttons.find { it.id == "btn_settings_scale_down" }
+        if (setDown?.isHovered == true && setDown.hoverProgress >= 0.99f) {
+            settingsScaleFactor = (settingsScaleFactor - 0.10f).coerceIn(0.6f, 1.8f)
+            applySettingsTransform(settingsScaleFactor)
+            showNotification("Tamanho Ajustes: ${String.format("%.1fx", settingsScaleFactor)}")
+        }
+        val setUp = settingsPanel.buttons.find { it.id == "btn_settings_scale_up" }
+        if (setUp?.isHovered == true && setUp.hoverProgress >= 0.99f) {
+            settingsScaleFactor = (settingsScaleFactor + 0.10f).coerceIn(0.6f, 1.8f)
+            applySettingsTransform(settingsScaleFactor)
+            showNotification("Tamanho Ajustes: ${String.format("%.1fx", settingsScaleFactor)}")
+        }
+
+        // Handle +/- clicks on Env panel
+        val envDown = environmentPanel.buttons.find { it.id == "btn_env_scale_down" }
+        if (envDown?.isHovered == true && envDown.hoverProgress >= 0.99f) {
+            envScaleFactor = (envScaleFactor - 0.10f).coerceIn(0.6f, 1.8f)
+            applyEnvTransform(envScaleFactor)
+            showNotification("Tamanho Cenários: ${String.format("%.1fx", envScaleFactor)}")
+        }
+        val envUp = environmentPanel.buttons.find { it.id == "btn_env_scale_up" }
+        if (envUp?.isHovered == true && envUp.hoverProgress >= 0.99f) {
+            envScaleFactor = (envScaleFactor + 0.10f).coerceIn(0.6f, 1.8f)
+            applyEnvTransform(envScaleFactor)
+            showNotification("Tamanho Cenários: ${String.format("%.1fx", envScaleFactor)}")
+        }
+
+            // Update dynamic UI textures for all open windows
             updateBarPanel()
-            if (currentDestination == LunarNavDestination.HOME) {
+            if (openDestinations.contains(LunarNavDestination.HOME)) {
                 updateHomePanel()
-            } else if (currentDestination == LunarNavDestination.BROWSER) {
+            }
+            if (openDestinations.contains(LunarNavDestination.BROWSER)) {
                 updateBrowserPanels()
-            } else if (currentDestination == LunarNavDestination.SETTINGS) {
+            }
+            if (openDestinations.contains(LunarNavDestination.SETTINGS)) {
                 updateSettingsPanel()
-            } else if (currentDestination == LunarNavDestination.ENVIRONMENTS) {
+            }
+            if (openDestinations.contains(LunarNavDestination.ENVIRONMENTS)) {
                 updateEnvironmentPanel()
             }
 
@@ -690,17 +789,20 @@ class VRRenderer(
         // Floating Lunar Bar
         barPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
 
-        // Only ONE app window open at a time to prevent any overlap!
-        if (currentDestination == LunarNavDestination.HOME) {
+        // Render all simultaneously open tabs (up to 3 comfortably side-by-side)
+        if (openDestinations.contains(LunarNavDestination.HOME)) {
             homeVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
-        } else if (currentDestination == LunarNavDestination.BROWSER) {
+        }
+        if (openDestinations.contains(LunarNavDestination.BROWSER)) {
             if (!isYouTubeMode) {
                 urlPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
             }
             browserPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
-        } else if (currentDestination == LunarNavDestination.SETTINGS) {
+        }
+        if (openDestinations.contains(LunarNavDestination.SETTINGS)) {
             settingsVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
-        } else if (currentDestination == LunarNavDestination.ENVIRONMENTS) {
+        }
+        if (openDestinations.contains(LunarNavDestination.ENVIRONMENTS)) {
             envVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
 
@@ -831,32 +933,151 @@ class VRRenderer(
         GLES20.glDisableVertexAttribArray(pos)
     }
 
-    private fun triggerHomeOpenAnimation() {
-        isHomeOpening = true
-        homeOpenStartTime = android.os.SystemClock.uptimeMillis()
-        homeOpenAnimProgress = 0.05f
+    private fun triggerTabAnimation(dest: LunarNavDestination) {
+        tabOpenStartTime[dest] = android.os.SystemClock.uptimeMillis()
+        tabOpenAnimProgress[dest] = 0.05f
     }
 
     private fun handleNavigation(dest: LunarNavDestination) {
-        if (dest == LunarNavDestination.HOME) {
-            triggerHomeOpenAnimation()
-        }
-        if (dest != LunarNavDestination.BROWSER) {
-            isYouTubeMode = false
-        }
-        if (currentDestination == dest) {
-            currentDestination = null
+        if (openDestinations.contains(dest)) {
+            // Toggle close
+            openDestinations.remove(dest)
+            tabOpenAnimProgress.remove(dest)
+            tabOpenStartTime.remove(dest)
+            if (dest == LunarNavDestination.BROWSER) {
+                vrKeyboard.isVisible = false
+            }
         } else {
-            currentDestination = dest
+            // Open window: maximum 3 windows simultaneously!
+            if (openDestinations.size >= 3) {
+                // Remove the oldest window to ensure max 3 windows
+                val oldest = openDestinations.first()
+                openDestinations.remove(oldest)
+                tabOpenAnimProgress.remove(oldest)
+                tabOpenStartTime.remove(oldest)
+            }
+            openDestinations.add(dest)
+            triggerTabAnimation(dest)
         }
 
-        homePanel.isVisible = (currentDestination == LunarNavDestination.HOME)
-        settingsPanel.isVisible = (currentDestination == LunarNavDestination.SETTINGS)
-        environmentPanel.isVisible = (currentDestination == LunarNavDestination.ENVIRONMENTS)
-        if (currentDestination != LunarNavDestination.BROWSER) {
-            vrKeyboard.isVisible = false
-        }
+        currentDestination = openDestinations.lastOrNull()
+        homePanel.isVisible = openDestinations.contains(LunarNavDestination.HOME)
+        settingsPanel.isVisible = openDestinations.contains(LunarNavDestination.SETTINGS)
+        environmentPanel.isVisible = openDestinations.contains(LunarNavDestination.ENVIRONMENTS)
+
+        // Relayout open windows comfortably side-by-side in 360° space (no overlap!)
+        arrangeOpenWindows()
         refreshInteractiveElements()
+    }
+
+    private fun arrangeOpenWindows() {
+        val count = openDestinations.size
+        if (count == 0) return
+
+        // Spread angles: if 1 window -> 0°, if 2 -> -28° and +28°, if 3 -> -46°, 0°, +46°
+        val yawAngles = when (count) {
+            1 -> listOf(0f)
+            2 -> listOf(-28f, 28f)
+            3 -> listOf(-48f, 0f, 48f)
+            else -> listOf(0f)
+        }
+
+        val destList = openDestinations.toList()
+        for (i in destList.indices) {
+            val d = destList[i]
+            val yaw = yawAngles[i]
+            when (d) {
+                LunarNavDestination.HOME -> {
+                    homeYawDeg = yaw
+                    applyHomeTransform(homeScaleFactor)
+                }
+                LunarNavDestination.BROWSER -> {
+                    browserYawDeg = yaw
+                    applyBrowserScaleFactor(browserScaleFactor)
+                }
+                LunarNavDestination.SETTINGS -> {
+                    settingsYawDeg = yaw
+                    applySettingsTransform(settingsScaleFactor)
+                }
+                LunarNavDestination.ENVIRONMENTS -> {
+                    envYawDeg = yaw
+                    applyEnvTransform(envScaleFactor)
+                }
+            }
+        }
+    }
+
+    fun applyHomeTransform(scale: Float) {
+        homeScaleFactor = scale.coerceIn(0.6f, 1.8f)
+        val baseW = 1.45f * homeScaleFactor
+        val baseH = 0.88f * homeScaleFactor
+        homeVRPanel?.setDimensions(baseW, baseH)
+
+        val rad = Math.toRadians(homeYawDeg.toDouble())
+        val dist = 1.38f
+        val hx = (dist * Math.sin(rad)).toFloat()
+        val hz = (-dist * Math.cos(rad)).toFloat()
+
+        homeVRPanel?.let {
+            it.x = hx
+            it.y = homeHeightY
+            it.z = hz
+            it.rotationYDeg = -homeYawDeg
+        }
+        homeGrabHandle.x = hx
+        homeGrabHandle.y = homeHeightY - (baseH / 2f) - 0.05f
+        homeGrabHandle.z = hz
+        homeResizeHandle.x = hx + (baseW / 2f) + 0.08f
+        homeResizeHandle.y = homeHeightY
+        homeResizeHandle.z = hz
+
+        homePanel.setupButtons(hx, homeHeightY, hz)
+    }
+
+    fun applySettingsTransform(scale: Float) {
+        settingsScaleFactor = scale.coerceIn(0.6f, 1.8f)
+        val baseW = 1.10f * settingsScaleFactor
+        val baseH = 0.82f * settingsScaleFactor
+        settingsVRPanel?.setDimensions(baseW, baseH)
+
+        val rad = Math.toRadians(settingsYawDeg.toDouble())
+        val dist = 1.34f
+        val sx = (dist * Math.sin(rad)).toFloat()
+        val sz = (-dist * Math.cos(rad)).toFloat()
+
+        settingsVRPanel?.let {
+            it.x = sx
+            it.y = settingsHeightY
+            it.z = sz
+            it.rotationYDeg = -settingsYawDeg
+        }
+        settingsGrabHandle.x = sx
+        settingsGrabHandle.y = settingsHeightY - (baseH / 2f) - 0.05f
+        settingsGrabHandle.z = sz
+        settingsPanel.setupButtons(sx, settingsHeightY)
+    }
+
+    fun applyEnvTransform(scale: Float) {
+        envScaleFactor = scale.coerceIn(0.6f, 1.8f)
+        val baseW = 1.10f * envScaleFactor
+        val baseH = 0.72f * envScaleFactor
+        envVRPanel?.setDimensions(baseW, baseH)
+
+        val rad = Math.toRadians(envYawDeg.toDouble())
+        val dist = 1.34f
+        val ex = (dist * Math.sin(rad)).toFloat()
+        val ez = (-dist * Math.cos(rad)).toFloat()
+
+        envVRPanel?.let {
+            it.x = ex
+            it.y = envHeightY
+            it.z = ez
+            it.rotationYDeg = -envYawDeg
+        }
+        envGrabHandle.x = ex
+        envGrabHandle.y = envHeightY - (baseH / 2f) - 0.05f
+        envGrabHandle.z = ez
+        environmentPanel.setupButtons(ex, envHeightY)
     }
 
     private fun openKeyboardForWebInput(initialText: String, onSubmit: (String) -> Unit) {
@@ -1163,28 +1384,15 @@ class VRRenderer(
 
     private fun updateHomePanel() {
         val now = android.os.SystemClock.uptimeMillis()
-        if (isHomeOpening) {
-            val elapsed = now - homeOpenStartTime
-            val animDuration = 350f
-            val t = (elapsed / animDuration).coerceIn(0f, 1f)
-            // Smooth ease-out cubic
-            homeOpenAnimProgress = 1f - Math.pow((1.0 - t).toDouble(), 3.0).toFloat()
-            if (t >= 1f) {
-                isHomeOpening = false
-                homeOpenAnimProgress = 1f
-            }
+        val startT = tabOpenStartTime[LunarNavDestination.HOME] ?: 0L
+        val animProg = if (startT != 0L) {
+            val el = now - startT
+            (el / 250f).coerceIn(0.05f, 1f)
+        } else 1f
+        val easeProgress = 1f - Math.pow((1.0 - animProg).toDouble(), 3.0).toFloat()
+        val scale = homeScaleFactor * easeProgress
+        homeVRPanel?.setDimensions(1.45f * scale, 0.88f * scale)
 
-            // Animate scale emerging from bottom button towards center
-            val scale = homeOpenAnimProgress
-            val baseW = 1.45f * scale
-            val baseH = 0.88f * scale
-            val animY = -0.28f + (0.12f - (-0.28f)) * homeOpenAnimProgress
-
-            homeVRPanel?.setDimensions(baseW, baseH)
-            homeVRPanel?.y = animY
-            homeGrabHandle.y = animY - (baseH / 2f) - 0.05f
-            homePanel.setupButtons(homeVRPanel?.x ?: 0f, animY, homeVRPanel?.z ?: -1.35f)
-        }
 
         homeVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
@@ -1203,6 +1411,26 @@ class VRRenderer(
             // Top-left Close Button '✕'
             val closeBtn = homePanel.buttons.find { it.id == "btn_close_home_top_left" }
             ModernIcons.drawCloseButton(canvas, paint, 50f, 65f, 22f, closeBtn?.isHovered == true)
+
+                        // Draw '+' and '-' scaling buttons on Home Panel
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#1E293B")
+            val hMinusRect = RectF(1110f, 32f, 1170f, 92f)
+            val hPlusRect = RectF(1185f, 32f, 1245f, 92f)
+            canvas.drawRoundRect(hMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(hPlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.color = Color.parseColor("#475569")
+            canvas.drawRoundRect(hMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(hPlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 30f
+            paint.color = Color.parseColor("#38BDF8")
+            canvas.drawText("－", 1126f, 72f, paint)
+            canvas.drawText("＋", 1201f, 72f, paint)
 
             // Header Section: Title "Biblioteca / Início" and Meta Quest Inspired Capsule Tabs
             paint.style = Paint.Style.FILL
@@ -1501,6 +1729,26 @@ class VRRenderer(
             val closeEnvBtn = environmentPanel.buttons.find { it.id == "btn_close_env_top_left" }
             ModernIcons.drawCloseButton(canvas, paint, 48f, 65f, 20f, closeEnvBtn?.isHovered == true)
 
+                        // Draw '+' and '-' scaling buttons on Environment Panel
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#1E293B")
+            val eMinusRect = RectF(870f, 32f, 930f, 92f)
+            val ePlusRect = RectF(945f, 32f, 1005f, 92f)
+            canvas.drawRoundRect(eMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(ePlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.color = Color.parseColor("#475569")
+            canvas.drawRoundRect(eMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(ePlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 30f
+            paint.color = Color.parseColor("#38BDF8")
+            canvas.drawText("－", 886f, 72f, paint)
+            canvas.drawText("＋", 961f, 72f, paint)
+
             // Header Icon and Title
             ModernIcons.drawEnvironmentIcon(canvas, paint, 92f, 65f, 30f, Color.parseColor("#00E5FF"))
 
@@ -1521,9 +1769,9 @@ class VRRenderer(
                 val col = i % 2
                 val row = i / 2
                 val bx = 50f + col * 480f
-                val by = 165f + row * 195f
+                val by = 155f + row * 155f
                 val bw = 440f
-                val bh = 165f
+                val bh = 135f
 
                 val isCurrent = (env == environmentManager.currentEnvironment)
 
@@ -1577,6 +1825,30 @@ class VRRenderer(
             paint.color = Color.parseColor("#38BDF8")
             canvas.drawRoundRect(RectF(10f, 10f, 1014f, 720f), 35f, 35f, paint)
 
+                        // Draw '+' and '-' scaling buttons on Settings Panel
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#1E293B")
+            val sMinusRect = RectF(870f, 32f, 930f, 92f)
+            val sPlusRect = RectF(945f, 32f, 1005f, 92f)
+            canvas.drawRoundRect(sMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(sPlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.color = Color.parseColor("#475569")
+            canvas.drawRoundRect(sMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(sPlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 30f
+            paint.color = Color.parseColor("#38BDF8")
+            canvas.drawText("－", 886f, 72f, paint)
+            canvas.drawText("＋", 961f, 72f, paint)
+
+            // Top-left Close Button '✕'
+            val closeSetBtn = settingsPanel.buttons.find { it.id == "btn_close_settings_top_left" }
+            ModernIcons.drawCloseButton(canvas, paint, 48f, 65f, 20f, closeSetBtn?.isHovered == true)
+
             // Header Icon and Title
             ModernIcons.drawSettingsIcon(canvas, paint, 60f, 65f, 34f, Color.parseColor("#00E5FF"))
 
@@ -1602,15 +1874,45 @@ class VRRenderer(
                 textY += 36f
             }
 
-            // Buttons grid
-            for (i in settingsPanel.buttons.indices) {
-                val btn = settingsPanel.buttons[i]
+            // Buttons: Row 1 is 6DoF full-width banner, then 2-column grid
+            val dofBtn = settingsPanel.buttons.find { it.id == "btn_dof_toggle" }
+            if (dofBtn != null) {
+                val dbx = 50f
+                val dby = 280f
+                val dbw = 924f
+                val dbh = 75f
+
+                paint.style = Paint.Style.FILL
+                paint.color = if (dofBtn.isHovered) Color.parseColor("#1E3A8A") else Color.parseColor("#1E293B")
+                canvas.drawRoundRect(RectF(dbx, dby, dbx + dbw, dby + dbh), 20f, 20f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = if (dofBtn.isHovered) 3.5f else 2.2f
+                paint.color = if (dofBtn.isHovered) Color.parseColor("#38BDF8") else Color.parseColor("#6366F1")
+                canvas.drawRoundRect(RectF(dbx, dby, dbx + dbw, dby + dbh), 20f, 20f, paint)
+
+                if (dofBtn.isHovered && dofBtn.hoverProgress > 0f) {
+                    paint.color = Color.parseColor("#38BDF8")
+                    paint.strokeWidth = 6f
+                    canvas.drawLine(dbx + 14f, dby + dbh - 6f, dbx + 14f + (dbw - 28f) * dofBtn.hoverProgress, dby + dbh - 6f, paint)
+                }
+
+                paint.style = Paint.Style.FILL
+                paint.textSize = 28f
+                paint.color = Color.WHITE
+                val dtw = paint.measureText(dofBtn.label)
+                canvas.drawText(dofBtn.label, dbx + (dbw - dtw) / 2f, dby + 48f, paint)
+            }
+
+            val otherBtns = settingsPanel.buttons.filter { it.id != "btn_dof_toggle" && it.id != "btn_close_settings_top_left" && it.id != "btn_settings_scale_down" && it.id != "btn_settings_scale_up" }
+            for (i in otherBtns.indices) {
+                val btn = otherBtns[i]
                 val col = i % 2
                 val row = i / 2
                 val bx = 50f + col * 480f
-                val by = 420f + row * 80f
+                val by = 380f + row * 85f
                 val bw = 440f
-                val bh = 65f
+                val bh = 70f
 
                 paint.style = Paint.Style.FILL
                 paint.color = if (btn.isHovered) Color.parseColor("#2E1065") else Color.parseColor("#171F33")

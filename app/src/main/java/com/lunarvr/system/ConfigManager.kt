@@ -31,6 +31,10 @@ class ConfigManager(context: Context) {
         get() = prefs.getBoolean("invert_y", false)
         set(value) = prefs.edit().putBoolean("invert_y", value).apply()
 
+    var is6DofEnabled: Boolean
+        get() = prefs.getBoolean("is_6dof_enabled", false)
+        set(value) = prefs.edit().putBoolean("is_6dof_enabled", value).apply()
+
     var economicMode: Boolean
         get() = prefs.getBoolean("economic_mode", false)
         set(value) = prefs.edit().putBoolean("economic_mode", value).apply()

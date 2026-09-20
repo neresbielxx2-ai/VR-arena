@@ -24,6 +24,9 @@ class EnvironmentBackdrop(val type: VREnvironmentType) {
                 VREnvironmentType.CYBER_SYNTHWAVE -> drawCyberSynthwave(canvas, paint)
                 VREnvironmentType.ZEN_FOREST -> drawZenForest(canvas, paint)
                 VREnvironmentType.MINIMAL_LOFT -> drawMinimalLoft(canvas, paint)
+                VREnvironmentType.PASSTHROUGH_CAM -> {
+                    // Transparent backdrop: phone camera feed is visible underneath
+                }
             }
         }
     }

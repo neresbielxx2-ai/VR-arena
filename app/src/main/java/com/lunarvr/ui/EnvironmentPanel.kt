@@ -26,17 +26,29 @@ class EnvironmentPanel(
 
         val zPos = -1.30f
 
-        // Top-left distinct close '✕' button for the panel (does not overlap content)
+        // Top-left distinct close '✕' button for the panel
         buttons.add(
-            AppButton("btn_close_env_top_left", "✕", centerX - 0.49f, centerY + 0.31f, zPos, 0.08f, 0.08f) {
+            AppButton("btn_close_env_top_left", "✕", centerX - 0.49f, centerY + 0.35f, zPos, 0.08f, 0.08f) {
                 isVisible = false
                 onCloseEnvironment()
             }
         )
 
-        val startY = centerY + 0.18f
+        // Resizing +/- buttons
+        buttons.add(
+            AppButton("btn_env_scale_down", "－", centerX + 0.38f, centerY + 0.35f, zPos, 0.07f, 0.07f) {
+                // Handled in VRRenderer
+            }
+        )
+        buttons.add(
+            AppButton("btn_env_scale_up", "＋", centerX + 0.46f, centerY + 0.35f, zPos, 0.07f, 0.07f) {
+                // Handled in VRRenderer
+            }
+        )
+
+        val startY = centerY + 0.22f
         val btnW = 0.44f
-        val btnH = 0.11f
+        val btnH = 0.10f
         val colLeft = centerX - 0.24f
         val colRight = centerX + 0.24f
 
@@ -45,7 +57,7 @@ class EnvironmentPanel(
         for (i in envs.indices) {
             val env = envs[i]
             val bx = if (i % 2 == 0) colLeft else colRight
-            val by = startY - (i / 2) * 0.15f
+            val by = startY - (i / 2) * 0.12f
             val isCurrent = (env == envManager.currentEnvironment)
             val label = "${if (isCurrent) "✓ " else ""}${env.displayName}"
 

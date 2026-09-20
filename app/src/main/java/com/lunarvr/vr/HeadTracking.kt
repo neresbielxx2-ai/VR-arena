@@ -116,6 +116,12 @@ class HeadTracking(private val context: Context) : SensorEventListener {
             yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
             pitchOffsetDeg = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
             isCalibrated = true
+            posX = 0f
+            posY = 0f
+            posZ = 0f
+            velX = 0f
+            velY = 0f
+            velZ = 0f
             recoveryMessage = "Visão centralizada e nivelada"
         }
         Log.d("LunarVR", "HeadTracking recentered. Yaw offset: $yawOffsetDeg, Pitch offset: $pitchOffsetDeg")
@@ -137,6 +143,26 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                     if (activeSensorType == TrackingSensorType.ACCELEROMETER_ONLY ||
                         (activeSensorType == TrackingSensorType.ACCEL_GYRO_FUSION && !hasGeomagnetic)) {
                         SensorManager.getRotationMatrix(rawRotationMatrix, null, gravity, floatArrayOf(0f, 1f, 0f))
+                    }
+
+                    if (is6DofEnabled) {
+                        val now = event.timestamp
+                        if (lastAccelTimestamp != 0L) {
+                            val dt = (now - lastAccelTimestamp) * 1e-9f
+                            if (dt in 0.001f..0.1f) {
+                                // Linear acceleration estimate removing gravity component
+                                val ax = event.values[0] - (gravity[0] * 0.98f)
+                                val ay = event.values[1] - (gravity[1] * 0.98f)
+                                val az = event.values[2] - (gravity[2] * 0.98f)
+                                velX = (velX + ax * dt) * 0.92f
+                                velY = (velY + ay * dt) * 0.92f
+                                velZ = (velZ + az * dt) * 0.92f
+                                posX = (posX + velX * dt).coerceIn(-1.5f, 1.5f)
+                                posY = (posY + velY * dt).coerceIn(-0.8f, 0.8f)
+                                posZ = (posZ + velZ * dt).coerceIn(-1.5f, 1.5f)
+                            }
+                        }
+                        lastAccelTimestamp = now
                     }
                 }
                 Sensor.TYPE_MAGNETIC_FIELD -> {
@@ -166,6 +192,12 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                     yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
                     pitchOffsetDeg = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
                     isCalibrated = true
+            posX = 0f
+            posY = 0f
+            posZ = 0f
+            velX = 0f
+            velY = 0f
+            velZ = 0f
                 }
             }
         }
@@ -212,6 +244,9 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
                 // Clean Camera View Matrix:
                 Matrix.setIdentityM(cameraViewMatrix, 0)
+                if (is6DofEnabled) {
+                    Matrix.translateM(cameraViewMatrix, 0, -posX, -posY, -posZ)
+                }
                 Matrix.rotateM(cameraViewMatrix, 0, currentRoll, 0f, 0f, 1f)
                 Matrix.rotateM(cameraViewMatrix, 0, pitchSign * currentPitch, 1f, 0f, 0f)
                 Matrix.rotateM(cameraViewMatrix, 0, yawSign * currentYaw, 0f, 1f, 0f)
