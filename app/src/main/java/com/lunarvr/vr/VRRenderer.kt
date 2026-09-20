@@ -1,6 +1,7 @@
 package com.lunarvr.vr
 
 import android.os.SystemClock
+import android.graphics.Bitmap
 
 import android.content.Context
 import android.graphics.Color
