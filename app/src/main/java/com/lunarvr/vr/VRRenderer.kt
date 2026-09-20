@@ -526,6 +526,27 @@ class VRRenderer(
         }
     }
 
+    var onModelImportRequested: (() -> Unit)? = null
+
+    fun requestNativeModelPicker() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            onModelImportRequested?.invoke()
+        }
+    }
+
+    fun handleModelImported(uri: android.net.Uri, displayName: String?) {
+        val imported = customModelManager.importModelFromUri(uri, displayName)
+        if (imported != null) {
+            environmentPanel.selectedFile = imported.file
+            environmentPanel.viewMode = com.lunarvr.ui.EnvViewMode.CAMERA_POS_CONFIG
+            environmentPanel.setupButtons()
+            refreshInteractiveElements()
+            showNotification("Modelo importado! Escolha a posição da câmera.")
+        } else {
+            showNotification("Erro ao importar modelo 3D.")
+        }
+    }
+
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         screenWidth = if (width > 0) width else 1920
         screenHeight = if (height > 0) height else 1080
