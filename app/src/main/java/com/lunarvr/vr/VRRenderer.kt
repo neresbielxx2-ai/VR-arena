@@ -755,6 +755,36 @@ class VRRenderer(
         reticleProgram = createProgram(vs, fs)
     }
 
+    private fun drawCustom3DModel(vpMatrix: FloatArray) {
+        val mesh = customModelManager.activeCustomModel ?: return
+        if (starProgram == 0) return
+        GLES20.glUseProgram(starProgram)
+        val mvp = GLES20.glGetUniformLocation(starProgram, "uMVPMatrix")
+        val color = GLES20.glGetUniformLocation(starProgram, "vColor")
+        val pos = GLES20.glGetAttribLocation(starProgram, "vPosition")
+
+        val modelMatrix = FloatArray(16)
+        val finalMvp = FloatArray(16)
+        android.opengl.Matrix.setIdentityM(modelMatrix, 0)
+        android.opengl.Matrix.translateM(
+            modelMatrix, 0,
+            -customModelManager.cameraOffset.posX,
+            -customModelManager.cameraOffset.posY,
+            -customModelManager.cameraOffset.posZ
+        )
+        android.opengl.Matrix.multiplyMM(finalMvp, 0, vpMatrix, 0, modelMatrix, 0)
+
+        GLES20.glUniformMatrix4fv(mvp, 1, false, finalMvp, 0)
+        GLES20.glUniform4f(color, 0.4f, 0.8f, 1.0f, 1.0f)
+
+        mesh.vertexBuffer.position(0)
+        GLES20.glEnableVertexAttribArray(pos)
+        GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 3 * 4, mesh.vertexBuffer)
+
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, mesh.vertexCount)
+        GLES20.glDisableVertexAttribArray(pos)
+    }
+
     private fun drawStarfield(vpMatrix: FloatArray) {
         val sBuf = starBuffer ?: return
         if (starProgram == 0) return
