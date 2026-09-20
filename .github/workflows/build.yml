@@ -43,10 +43,23 @@ jobs:
         run: |
           gradle compileDebugKotlin --no-daemon --stacktrace > kotlin_compile.log 2>&1
 
+      - name: Upload Compiler Log
+        if: steps.compile_step.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotlin-compiler-log
+          path: kotlin_compile.log
+
       - name: Output Compiler Error
         if: steps.compile_step.outcome == 'failure'
         run: |
-          grep -C 3 -E "e: |error:|FAILED" kotlin_compile.log | head -n 80
+          python3 -c "
+with open('kotlin_compile.log') as f:
+    lines = f.readlines()
+for line in lines:
+    if any(k in line for k in ['e:', 'error:', 'FAILED', 'Unresolved', 'Type mismatch', 'Overload']):
+        print('ERR >>', line.strip())
+"
           exit 1
 
       - name: Build Release APK (Unsigned)
