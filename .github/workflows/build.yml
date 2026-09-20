@@ -38,7 +38,17 @@ jobs:
         run: gradle test --no-daemon --stacktrace || true
 
       - name: Build Debug APK
-        run: gradle compileDebugKotlin --no-daemon --stacktrace
+        id: compile_step
+        continue-on-error: true
+        run: |
+          gradle compileDebugKotlin --no-daemon --stacktrace > kotlin_compile.log 2>&1
+
+      - name: Output Compiler Error
+        if: steps.compile_step.outcome == 'failure'
+        run: |
+          echo "::: KOTLIN COMPILER LOG :::"
+          cat kotlin_compile.log
+          exit 1
 
       - name: Build Release APK (Unsigned)
         run: gradle assembleRelease --no-daemon --stacktrace || true
