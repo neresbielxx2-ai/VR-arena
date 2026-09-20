@@ -16,7 +16,9 @@ import com.lunarvr.browser.BrowserTouchElement
 import com.lunarvr.browser.BrowserView
 import com.lunarvr.browser.URLBar
 import com.lunarvr.environment.EnvironmentBackdrop
+import com.lunarvr.environment.CustomModelManager
 import com.lunarvr.environment.EnvironmentManager
+import com.lunarvr.ui.EnvViewMode
 import com.lunarvr.handtracking.InteractionManager
 import com.lunarvr.handtracking.Ray3D
 import com.lunarvr.keyboard.TextInputManager
@@ -70,9 +72,19 @@ class VRRenderer(
         }
     }
 
-    val environmentPanel = EnvironmentPanel(environmentManager) {
-        refreshInteractiveElements()
-    }
+    val customModelManager = CustomModelManager()
+    val environmentPanel = EnvironmentPanel(
+        envManager = environmentManager,
+        customModelManager = customModelManager,
+        onEnvironmentChanged = {
+            refreshInteractiveElements()
+        },
+        onOpenKeyboardForPosition = { axis, currentVal, onSubmitted ->
+            openKeyboardForWebInput(currentVal) { input ->
+                onSubmitted(input)
+            }
+        }
+    )
 
     // Home / Library Panel (inspired by Meta Quest Store and Home Library)
     var isYouTubeMode: Boolean = false
@@ -614,9 +626,13 @@ class VRRenderer(
         // Draw Panels in World space
         GLES20.glUseProgram(panelProgram)
 
-        // Draw Scenic Environment 3D Backdrop (Moon with Earth, Cyber Synthwave, Zen Forest, Skyline)
-        val curBackdrop = backdrops[environmentManager.currentEnvironment]
-        curBackdrop?.panel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+        // Draw Scenic Environment 3D Backdrop (or custom 3D model if active)
+        if (customModelManager.isCustomModelActive && customModelManager.activeCustomModel != null) {
+            drawCustom3DModel(vpMatrix)
+        } else {
+            val curBackdrop = backdrops[environmentManager.currentEnvironment]
+            curBackdrop?.panel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+        }
 
         // Floating Lunar Bar
         barPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
@@ -1359,7 +1375,7 @@ class VRRenderer(
     }
 
     private fun updateEnvironmentPanel() {
-        envVRPanel?.drawCustom { canvas, paint ->
+        environmentsVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
             // Background panel
@@ -1372,60 +1388,183 @@ class VRRenderer(
             paint.color = Color.parseColor("#38BDF8")
             canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
 
-            // Header Icon and Title
-            ModernIcons.drawEnvironmentIcon(canvas, paint, 60f, 65f, 34f, Color.parseColor("#00E5FF"))
+            when (environmentPanel.viewMode) {
+                EnvViewMode.GRID -> {
+                    // Header Icon and Title
+                    ModernIcons.drawEnvironmentIcon(canvas, paint, 60f, 65f, 34f, Color.parseColor("#00E5FF"))
 
-            paint.style = Paint.Style.FILL
-            paint.textSize = 34f
-            paint.color = Color.parseColor("#00E5FF")
-            canvas.drawText("CENÁRIOS VIRTUAIS VR", 100f, 75f, paint)
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 34f
+                    paint.color = Color.parseColor("#00E5FF")
+                    canvas.drawText("CENÁRIOS VIRTUAIS VR", 100f, 75f, paint)
 
-            // Description
-            paint.textSize = 24f
-            paint.color = Color.parseColor("#94A3B8")
-            canvas.drawText("Escolha o tema imersivo do seu ambiente espacial:", 50f, 130f, paint)
+                    // Description
+                    paint.textSize = 24f
+                    paint.color = Color.parseColor("#94A3B8")
+                    val descText = if (customModelManager.isCustomModelActive) {
+                        "Modelo 3D Personalizado Ativo: ${customModelManager.activeModelName}"
+                    } else {
+                        "Escolha o tema imersivo do seu ambiente espacial ou importe um 3D:"
+                    }
+                    canvas.drawText(descText, 50f, 130f, paint)
 
-            // Environment cards
-            val envs = com.lunarvr.environment.VREnvironmentType.values()
-            for (i in envs.indices) {
-                val env = envs[i]
-                val col = i % 2
-                val row = i / 2
-                val bx = 50f + col * 480f
-                val by = 170f + row * 160f
-                val bw = 440f
-                val bh = 135f
+                    // Environment cards
+                    val envs = com.lunarvr.environment.VREnvironmentType.values()
+                    for (i in envs.indices) {
+                        val env = envs[i]
+                        val col = i % 2
+                        val row = i / 2
+                        val bx = 50f + col * 480f
+                        val by = 160f + row * 150f
+                        val bw = 440f
+                        val bh = 125f
 
-                val isCurrent = (env == environmentManager.currentEnvironment)
+                        val isCurrent = !customModelManager.isCustomModelActive && (env == environmentManager.currentEnvironment)
 
-                // Distinct color scheme for each environment card
-                val cardTheme = when (env) {
-                    com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW -> Pair("#1E3A8A", "#38BDF8")
-                    com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
-                    com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
-                    com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
+                        val cardTheme = when (env) {
+                            com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW -> Pair("#1E3A8A", "#38BDF8")
+                            com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
+                            com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
+                            com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
+                        }
+
+                        paint.style = Paint.Style.FILL
+                        paint.color = if (isCurrent) Color.parseColor(cardTheme.first) else Color.parseColor("#151D2A")
+                        canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
+
+                        paint.style = Paint.Style.STROKE
+                        paint.strokeWidth = if (isCurrent) 3.5f else 1.8f
+                        paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#334155")
+                        canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
+
+                        // Title
+                        paint.style = Paint.Style.FILL
+                        paint.textSize = 26f
+                        paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#F8FAFC")
+                        val activeTag = if (isCurrent) " (Ativo)" else ""
+                        canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 46f, paint)
+
+                        // Subtitle
+                        paint.textSize = 19f
+                        paint.color = Color.parseColor("#94A3B8")
+                        canvas.drawText(env.description, bx + 24f, by + 86f, paint)
+                    }
+
+                    // Bottom bar for "+" Import 3D button
+                    val addBtnRect = RectF(50f, 490f, 680f, 580f)
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.parseColor("#1E293B")
+                    canvas.drawRoundRect(addBtnRect, 18f, 18f, paint)
+
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.5f
+                    paint.color = Color.parseColor("#10B981")
+                    canvas.drawRoundRect(addBtnRect, 18f, 18f, paint)
+
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 26f
+                    paint.color = Color.parseColor("#10B981")
+                    canvas.drawText("➕ Importar Cenário 3D (.glb / .obj / .gltf)", 75f, 545f, paint)
                 }
 
-                paint.style = Paint.Style.FILL
-                paint.color = if (isCurrent) Color.parseColor(cardTheme.first) else Color.parseColor("#151D2A")
-                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
+                EnvViewMode.FILE_PICKER -> {
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 32f
+                    paint.color = Color.parseColor("#00E5FF")
+                    canvas.drawText("GERENCIADOR DE ARQUIVOS VR", 60f, 75f, paint)
 
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = if (isCurrent) 3.5f else 1.8f
-                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#334155")
-                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
+                    paint.textSize = 22f
+                    paint.color = Color.parseColor("#94A3B8")
+                    canvas.drawText("Modelos 3D encontrados em Downloads e Documentos:", 60f, 120f, paint)
 
-                // Title
-                paint.style = Paint.Style.FILL
-                paint.textSize = 27f
-                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#F8FAFC")
-                val activeTag = if (isCurrent) " (Ativo)" else ""
-                canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 48f, paint)
+                    val files = customModelManager.getAvailableModelFiles()
+                    if (files.isEmpty()) {
+                        paint.textSize = 26f
+                        paint.color = Color.parseColor("#F59E0B")
+                        canvas.drawText("Nenhum arquivo .glb ou .obj encontrado nas pastas.", 60f, 240f, paint)
+                        paint.textSize = 20f
+                        paint.color = Color.parseColor("#94A3B8")
+                        canvas.drawText("Coloque seus arquivos 3D na pasta Download ou Documents do celular.", 60f, 290f, paint)
+                    } else {
+                        for (i in 0 until Math.min(files.size, 4)) {
+                            val f = files[i]
+                            val fy = 160f + i * 85f
+                            paint.style = Paint.Style.FILL
+                            paint.color = Color.parseColor("#1E293B")
+                            canvas.drawRoundRect(RectF(60f, fy, 960f, fy + 70f), 15f, 15f, paint)
 
-                // Subtitle
-                paint.textSize = 20f
-                paint.color = Color.parseColor("#94A3B8")
-                canvas.drawText(env.description, bx + 24f, by + 90f, paint)
+                            paint.style = Paint.Style.STROKE
+                            paint.strokeWidth = 2f
+                            paint.color = Color.parseColor("#38BDF8")
+                            canvas.drawRoundRect(RectF(60f, fy, 960f, fy + 70f), 15f, 15f, paint)
+
+                            paint.style = Paint.Style.FILL
+                            paint.textSize = 24f
+                            paint.color = Color.parseColor("#F8FAFC")
+                            canvas.drawText("📁 ${f.name}", 85f, fy + 45f, paint)
+                        }
+                    }
+                }
+
+                EnvViewMode.CAMERA_POS_CONFIG -> {
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 32f
+                    paint.color = Color.parseColor("#00E5FF")
+                    canvas.drawText("CONFIGURAR POSIÇÃO DA CÂMERA", 60f, 75f, paint)
+
+                    paint.textSize = 22f
+                    paint.color = Color.parseColor("#94A3B8")
+                    canvas.drawText("Arquivo: ${environmentPanel.selectedFile?.name ?: "Modelo 3D"}", 60f, 120f, paint)
+                    canvas.drawText("Ajuste as coordenadas da visão da câmera no cenário 3D:", 60f, 155f, paint)
+
+                    // 3 Input boxes representation
+                    val boxW = 280f
+                    val boxH = 90f
+                    val yBox = 210f
+
+                    // X Box
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.parseColor("#1E293B")
+                    canvas.drawRoundRect(RectF(60f, yBox, 60f + boxW, yBox + boxH), 16f, 16f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.5f
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawRoundRect(RectF(60f, yBox, 60f + boxW, yBox + boxH), 16f, 16f, paint)
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 28f
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawText("X: ${environmentPanel.inputPosX}", 90f, yBox + 55f, paint)
+
+                    // Y Box
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.parseColor("#1E293B")
+                    canvas.drawRoundRect(RectF(370f, yBox, 370f + boxW, yBox + boxH), 16f, 16f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.5f
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawRoundRect(RectF(370f, yBox, 370f + boxW, yBox + boxH), 16f, 16f, paint)
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 28f
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawText("Y: ${environmentPanel.inputPosY}", 400f, yBox + 55f, paint)
+
+                    // Z Box
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.parseColor("#1E293B")
+                    canvas.drawRoundRect(RectF(680f, yBox, 680f + boxW, yBox + boxH), 16f, 16f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.5f
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawRoundRect(RectF(680f, yBox, 680f + boxW, yBox + boxH), 16f, 16f, paint)
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 28f
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawText("Z: ${environmentPanel.inputPosZ}", 710f, yBox + 55f, paint)
+
+                    paint.textSize = 20f
+                    paint.color = Color.parseColor("#94A3B8")
+                    canvas.drawText("Toque em cada caixa para abrir o teclado virtual e digitar os valores.", 60f, 345f, paint)
+                }
             }
 
             // Drag handle at bottom
@@ -1435,7 +1574,6 @@ class VRRenderer(
             )
         }
     }
-
     private fun updateSettingsPanel() {
         settingsVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
