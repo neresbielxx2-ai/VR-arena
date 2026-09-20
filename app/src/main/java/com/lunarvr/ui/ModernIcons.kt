@@ -240,4 +240,33 @@ object ModernIcons {
         paint.color = oldColor
         paint.style = oldStyle
     }
+
+    // YouTube Icon (clean red rounded rectangle with white play triangle)
+    fun drawYouTubeIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+
+        val halfW = size * 0.85f
+        val halfH = size * 0.58f
+
+        // Red badge
+        paint.style = Paint.Style.FILL
+        paint.color = Color.parseColor("#FF0000")
+        canvas.drawRoundRect(RectF(cx - halfW, cy - halfH, cx + halfW, cy + halfH), 22f, 22f, paint)
+
+        // White Play Triangle
+        paint.color = Color.WHITE
+        val triPath = Path().apply {
+            val triW = size * 0.35f
+            val triH = size * 0.32f
+            moveTo(cx - triW * 0.45f, cy - triH)
+            lineTo(cx + triW * 0.75f, cy)
+            lineTo(cx - triW * 0.45f, cy + triH)
+            close()
+        }
+        canvas.drawPath(triPath, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+    }
 }

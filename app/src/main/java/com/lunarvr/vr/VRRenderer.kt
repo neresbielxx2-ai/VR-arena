@@ -24,6 +24,8 @@ import com.lunarvr.ui.BarStyle
 import com.lunarvr.ui.BarColorTheme
 import com.lunarvr.ui.EnvironmentPanel
 import com.lunarvr.ui.GrabHandle
+import com.lunarvr.ui.HomePanel
+import com.lunarvr.ui.HomeTab
 import com.lunarvr.ui.LunarBar
 import com.lunarvr.ui.LunarNavDestination
 import com.lunarvr.ui.ModernIcons
@@ -67,6 +69,21 @@ class VRRenderer(
         refreshInteractiveElements()
     }
 
+    // Home / Library Panel (inspired by Meta Quest Store and Home Library)
+    var isYouTubeMode: Boolean = false
+    val homePanel = HomePanel(
+        onOpenYouTube = {
+            isYouTubeMode = true
+            browserController.updateUrl("https://m.youtube.com")
+            browserView?.loadUrl("https://m.youtube.com")
+            handleNavigation(LunarNavDestination.BROWSER)
+            showNotification("Abrindo YouTube VR...")
+        },
+        onTabChanged = {
+            refreshInteractiveElements()
+        }
+    )
+
     val browserController = BrowserController()
     var browserView: BrowserView? = null
     val urlBar = URLBar(
@@ -102,12 +119,14 @@ class VRRenderer(
     private var settingsVRPanel: VRPanel? = null
     private var envVRPanel: VRPanel? = null
     private var keyboardVRPanel: VRPanel? = null
+    private var homeVRPanel: VRPanel? = null
 
     // Meta Quest style App Window Drag Handles: independent move handle under EACH open app window!
     private var browserGrabHandle = GrabHandle("grab_browser", 0.0f, -0.36f, -1.35f, 0.42f, 0.06f)
     private var settingsGrabHandle = GrabHandle("grab_settings", 0.0f, -0.38f, -1.30f, 0.42f, 0.06f)
     private var envGrabHandle = GrabHandle("grab_env", 0.0f, -0.38f, -1.30f, 0.42f, 0.06f)
     private var keyboardGrabHandle = GrabHandle("grab_keyboard", 0.0f, -0.34f, -1.25f, 0.42f, 0.06f)
+    private var homeGrabHandle = GrabHandle("grab_home", 0.0f, -0.36f, -1.35f, 0.42f, 0.06f)
 
     // Spherical window coordinates (free 360 rotation around user, height up/down, no walls!)
     private var browserYawDeg: Float = 0f
@@ -118,6 +137,11 @@ class VRRenderer(
     private var envHeightY: Float = 0.10f
     private var keyboardYawDeg: Float = 0f
     private var keyboardHeightY: Float = -0.05f
+    private var homeYawDeg: Float = 0f
+    private var homeHeightY: Float = 0.12f
+    private var homeOpenAnimProgress: Float = 1.0f
+    private var isHomeOpening: Boolean = false
+    private var homeOpenStartTime: Long = 0L
 
     // Starfield background
     private var starCount = 350
@@ -222,6 +246,25 @@ class VRRenderer(
                 envGrabHandle.y = height - 0.38f
                 envGrabHandle.z = ez
                 environmentPanel.setupButtons(ex, height)
+            }
+
+            homeGrabHandle.onDragUpdateSpherical = { yaw, height, dist ->
+                homeYawDeg = yaw
+                homeHeightY = height
+                val rad = Math.toRadians(yaw.toDouble())
+                val hx = (dist * Math.sin(rad)).toFloat()
+                val hz = (-dist * Math.cos(rad)).toFloat()
+
+                homeVRPanel?.let {
+                    it.x = hx
+                    it.y = height
+                    it.z = hz
+                    it.rotationYDeg = -yaw
+                }
+                homeGrabHandle.x = hx
+                homeGrabHandle.y = height - 0.47f
+                homeGrabHandle.z = hz
+                homePanel.setupButtons(hx, height, hz)
             }
 
             keyboardGrabHandle.onDragUpdateSpherical = { yaw, height, dist ->
@@ -380,10 +423,13 @@ class VRRenderer(
             settingsGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.6f), 1.30f)
             envGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.6f), 1.30f)
             keyboardGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.4f), 1.25f)
+            homeGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.6f), 1.35f)
 
             // Update dynamic UI textures
             updateBarPanel()
-            if (currentDestination == LunarNavDestination.BROWSER) {
+            if (currentDestination == LunarNavDestination.HOME) {
+                updateHomePanel()
+            } else if (currentDestination == LunarNavDestination.BROWSER) {
                 updateBrowserPanels()
             } else if (currentDestination == LunarNavDestination.SETTINGS) {
                 updateSettingsPanel()
@@ -439,7 +485,9 @@ class VRRenderer(
         barPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
 
         // Only ONE app window open at a time to prevent any overlap!
-        if (currentDestination == LunarNavDestination.BROWSER) {
+        if (currentDestination == LunarNavDestination.HOME) {
+            homeVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+        } else if (currentDestination == LunarNavDestination.BROWSER) {
             urlPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
             browserPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         } else if (currentDestination == LunarNavDestination.SETTINGS) {
@@ -573,7 +621,19 @@ class VRRenderer(
         GLES20.glDisableVertexAttribArray(pos)
     }
 
+    private fun triggerHomeOpenAnimation() {
+        isHomeOpening = true
+        homeOpenStartTime = android.os.SystemClock.uptimeMillis()
+        homeOpenAnimProgress = 0.05f
+    }
+
     private fun handleNavigation(dest: LunarNavDestination) {
+        if (dest == LunarNavDestination.HOME) {
+            triggerHomeOpenAnimation()
+        }
+        if (dest != LunarNavDestination.BROWSER) {
+            isYouTubeMode = false
+        }
         if (currentDestination == dest && dest != LunarNavDestination.HOME) {
             currentDestination = LunarNavDestination.HOME
         } else {
@@ -616,8 +676,21 @@ class VRRenderer(
         }
         interactionManager.register(lunarBar.grabHandle)
 
+        // Register Home Panel buttons and drag handle if Home is open
+        if (currentDestination == LunarNavDestination.HOME) {
+            for (btn in homePanel.buttons) {
+                interactionManager.register(btn)
+            }
+            interactionManager.register(homeGrabHandle)
+        }
+
         // Register Browser buttons, web click touch surface, and drag handle
         if (currentDestination == LunarNavDestination.BROWSER) {
+            if (!isYouTubeMode) {
+                for (btn in urlBar.buttons) {
+                    interactionManager.register(btn)
+                }
+            }
             for (btn in urlBar.buttons) {
                 interactionManager.register(btn)
             }
@@ -790,6 +863,182 @@ class VRRenderer(
             // Drag Handle Bar (2 seconds lock)
             val grab = lunarBar.grabHandle
             ModernIcons.drawDragHandle(canvas, paint, 512f, 230f, 280f, 22f, grab.isHovered, grab.isGrabbed, grab.hoverProgress)
+        }
+    }
+
+
+    private fun updateHomePanel() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (isHomeOpening) {
+            val elapsed = now - homeOpenStartTime
+            val animDuration = 350f
+            val t = (elapsed / animDuration).coerceIn(0f, 1f)
+            // Smooth ease-out cubic
+            homeOpenAnimProgress = 1f - Math.pow((1.0 - t).toDouble(), 3.0).toFloat()
+            if (t >= 1f) {
+                isHomeOpening = false
+                homeOpenAnimProgress = 1f
+            }
+
+            // Animate scale emerging from bottom button towards center
+            val scale = homeOpenAnimProgress
+            val baseW = 1.45f * scale
+            val baseH = 0.88f * scale
+            val animY = -0.28f + (0.12f - (-0.28f)) * homeOpenAnimProgress
+
+            homeVRPanel?.setDimensions(baseW, baseH)
+            homeVRPanel?.y = animY
+            homeGrabHandle.y = animY - (baseH / 2f) - 0.05f
+            homePanel.setupButtons(homeVRPanel?.x ?: 0f, animY, homeVRPanel?.z ?: -1.35f)
+        }
+
+        homeVRPanel?.drawCustom { canvas, paint ->
+            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+
+            // Outer Curved Glass Window shell (Meta Quest 3/3S style dark acrylic glass with subtle border glow)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#F5101420")
+            val mainRect = RectF(12f, 12f, 1268f, 756f)
+            canvas.drawRoundRect(mainRect, 36f, 36f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2.5f
+            paint.color = Color.parseColor("#334155")
+            canvas.drawRoundRect(mainRect, 36f, 36f, paint)
+
+            // Header Section: Title "Biblioteca / Início" and Meta Quest Inspired Capsule Tabs
+            paint.style = Paint.Style.FILL
+            paint.textSize = 34f
+            paint.color = Color.parseColor("#F8FAFC")
+            canvas.drawText("Biblioteca", 50f, 75f, paint)
+
+            // Draw Meta Quest style pill segment for Tabs: [ Apps ]  [ Jogos ]
+            val tabContainerRect = RectF(360f, 32f, 740f, 96f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#1E293B")
+            canvas.drawRoundRect(tabContainerRect, 28f, 28f, paint)
+
+            // Tab 1: Apps
+            val isApps = (homePanel.currentTab == HomeTab.APPS)
+            val appsBtn = homePanel.buttons.find { it.id == "btn_tab_apps" }
+            val appsRect = RectF(364f, 36f, 546f, 92f)
+            paint.style = Paint.Style.FILL
+            paint.color = when {
+                isApps -> Color.parseColor("#6366F1") // Highlight active tab
+                appsBtn?.isHovered == true -> Color.parseColor("#334155")
+                else -> Color.TRANSPARENT
+            }
+            canvas.drawRoundRect(appsRect, 24f, 24f, paint)
+
+            paint.textSize = 24f
+            paint.color = if (isApps) Color.WHITE else Color.parseColor("#94A3B8")
+            var tw = paint.measureText("Apps")
+            canvas.drawText("Apps", appsRect.centerX() - tw / 2f, 72f, paint)
+
+            if (appsBtn?.isHovered == true && appsBtn.hoverProgress > 0f) {
+                paint.color = Color.parseColor("#38BDF8")
+                paint.strokeWidth = 4f
+                val progW = (appsRect.width() - 20f) * appsBtn.hoverProgress
+                canvas.drawLine(appsRect.left + 10f, appsRect.bottom - 4f, appsRect.left + 10f + progW, appsRect.bottom - 4f, paint)
+            }
+
+            // Tab 2: Jogos
+            val isJogos = (homePanel.currentTab == HomeTab.JOGOS)
+            val jogosBtn = homePanel.buttons.find { it.id == "btn_tab_jogos" }
+            val jogosRect = RectF(554f, 36f, 736f, 92f)
+            paint.style = Paint.Style.FILL
+            paint.color = when {
+                isJogos -> Color.parseColor("#6366F1") // Highlight active tab
+                jogosBtn?.isHovered == true -> Color.parseColor("#334155")
+                else -> Color.TRANSPARENT
+            }
+            canvas.drawRoundRect(jogosRect, 24f, 24f, paint)
+
+            paint.color = if (isJogos) Color.WHITE else Color.parseColor("#94A3B8")
+            tw = paint.measureText("Jogos")
+            canvas.drawText("Jogos", jogosRect.centerX() - tw / 2f, 72f, paint)
+
+            if (jogosBtn?.isHovered == true && jogosBtn.hoverProgress > 0f) {
+                paint.color = Color.parseColor("#38BDF8")
+                paint.strokeWidth = 4f
+                val progW = (jogosRect.width() - 20f) * jogosBtn.hoverProgress
+                canvas.drawLine(jogosRect.left + 10f, jogosRect.bottom - 4f, jogosRect.left + 10f + progW, jogosRect.bottom - 4f, paint)
+            }
+
+            // Divider line below header
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f
+            paint.color = Color.parseColor("#1E293B")
+            canvas.drawLine(50f, 120f, 1220f, 120f, paint)
+
+            // Content Area depending on selected tab
+            if (homePanel.currentTab == HomeTab.APPS) {
+                // Apps Grid: YouTube VR Card (Meta Quest style spacious rounded card with rich cover)
+                val cardRect = RectF(60f, 150f, 440f, 440f)
+                val ytBtn = homePanel.buttons.find { it.id == "btn_app_youtube" }
+                val isHovered = ytBtn?.isHovered == true
+
+                paint.style = Paint.Style.FILL
+                paint.color = if (isHovered) Color.parseColor("#1E2538") else Color.parseColor("#141926")
+                canvas.drawRoundRect(cardRect, 28f, 28f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = if (isHovered) 3.5f else 1.8f
+                paint.color = if (isHovered) Color.parseColor("#EF4444") else Color.parseColor("#2D3748")
+                canvas.drawRoundRect(cardRect, 28f, 28f, paint)
+
+                // YouTube Icon in center of top card artwork
+                ModernIcons.drawYouTubeIcon(canvas, paint, cardRect.centerX(), 265f, 56f)
+
+                // App Title and Category
+                paint.style = Paint.Style.FILL
+                paint.textSize = 28f
+                paint.color = Color.parseColor("#F8FAFC")
+                canvas.drawText("YouTube", 90f, 365f, paint)
+
+                paint.textSize = 20f
+                paint.color = Color.parseColor("#94A3B8")
+                canvas.drawText("Vídeos e Mídia VR", 90f, 400f, paint)
+
+                // Dwell Progress bar on YouTube card
+                if (isHovered && ytBtn != null && ytBtn.hoverProgress > 0f) {
+                    paint.color = Color.parseColor("#EF4444")
+                    paint.strokeWidth = 7f
+                    val progW = (cardRect.width() - 40f) * ytBtn.hoverProgress
+                    canvas.drawLine(cardRect.left + 20f, cardRect.bottom - 12f, cardRect.left + 20f + progW, cardRect.bottom - 12f, paint)
+                }
+
+                // Info pill
+                paint.style = Paint.Style.FILL
+                paint.color = Color.parseColor("#1E293B")
+                val infoRect = RectF(500f, 150f, 1220f, 300f)
+                canvas.drawRoundRect(infoRect, 22f, 22f, paint)
+                paint.textSize = 22f
+                paint.color = Color.parseColor("#CBD5E1")
+                canvas.drawText("✦ Selecione o YouTube para abrir o aplicativo de vídeo em tela cheia.", 530f, 210f, paint)
+                canvas.drawText("✦ Navegação limpa e focada no conteúdo, sem barras adicionais.", 530f, 255f, paint)
+
+            } else {
+                // Jogos Tab: Empty State with message "Nenhum jogo disponível."
+                paint.style = Paint.Style.FILL
+                paint.textSize = 34f
+                paint.color = Color.parseColor("#94A3B8")
+                val msg = "Nenhum jogo disponível."
+                val mw = paint.measureText(msg)
+                canvas.drawText(msg, 640f - mw / 2f, 360f, paint)
+
+                paint.textSize = 22f
+                paint.color = Color.parseColor("#64748B")
+                val subMsg = "Novos jogos e experiências em breve no Lunar VR."
+                val sw = paint.measureText(subMsg)
+                canvas.drawText(subMsg, 640f - sw / 2f, 410f, paint)
+            }
+
+            // Bottom drag handle
+            ModernIcons.drawDragHandle(
+                canvas, paint, 640f, 742f, 300f, 20f,
+                homeGrabHandle.isHovered, homeGrabHandle.isGrabbed, homeGrabHandle.hoverProgress
+            )
         }
     }
 
@@ -1127,6 +1376,9 @@ class VRRenderer(
 
         // Virtual 3D Keyboard
         keyboardVRPanel = VRPanel("keyboard_panel", 0.0f, -0.05f, -1.25f, 1.10f, 0.52f, 1024, 512).also { it.initGL() }
+
+        // Home / Store Library Panel (Meta Quest UI)
+        homeVRPanel = VRPanel("home_panel", 0.0f, 0.12f, -1.35f, 1.45f, 0.88f, 1280, 768).also { it.initGL() }
     }
 
     private fun initStarfield() {
