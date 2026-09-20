@@ -497,7 +497,7 @@ class VRRenderer(
 
         urlPanel?.let {
             it.x = bx
-            it.y = by + (panelH / 2f) + (urlH / 2f) + 0.02f
+            it.y = by + (panelH / 2f) + (urlH / 2f) + 0.015f
             it.z = bz
             it.rotationYDeg = rotY
         }
@@ -510,7 +510,7 @@ class VRRenderer(
         browserGrabHandle.y = by - (panelH / 2f) - 0.06f
         browserGrabHandle.z = bz
 
-        urlBar.setupButtons(bx, by + (panelH / 2f) + (urlH / 2f) + 0.02f)
+        urlBar.setupButtons(bx, by + (panelH / 2f) + (urlH / 2f) + 0.015f)
 
         browserResizeHandle.x = bx + (1.60f * scale / 2f) + 0.08f
         browserResizeHandle.y = by
@@ -847,6 +847,12 @@ class VRRenderer(
     private fun drawCustom3DModel(vpMatrix: FloatArray) {
         val mesh = customModelManager.activeCustomModel ?: return
         if (starProgram == 0) return
+
+        // Save OpenGL state and render custom 3D model
+        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+        GLES20.glDepthFunc(GLES20.GL_LEQUAL)
+        GLES20.glDepthMask(true)
+
         GLES20.glUseProgram(starProgram)
         val mvp = GLES20.glGetUniformLocation(starProgram, "uMVPMatrix")
         val color = GLES20.glGetUniformLocation(starProgram, "vColor")
@@ -855,6 +861,15 @@ class VRRenderer(
         val modelMatrix = FloatArray(16)
         val finalMvp = FloatArray(16)
         android.opengl.Matrix.setIdentityM(modelMatrix, 0)
+
+        // Scale model to a comfortable backdrop radius if huge or tiny
+        val spanX = Math.abs(mesh.maxX - mesh.minX)
+        val spanY = Math.abs(mesh.maxY - mesh.minY)
+        val spanZ = Math.abs(mesh.maxZ - mesh.minZ)
+        val maxSpan = Math.max(spanX, Math.max(spanY, spanZ))
+        val scaleFactor = if (maxSpan > 0.001f && maxSpan > 50f) 50f / maxSpan else if (maxSpan < 0.5f && maxSpan > 0.0001f) 10f / maxSpan else 1.0f
+
+        android.opengl.Matrix.scaleM(modelMatrix, 0, scaleFactor, scaleFactor, scaleFactor)
         android.opengl.Matrix.translateM(
             modelMatrix, 0,
             -customModelManager.cameraOffset.posX,
@@ -864,7 +879,7 @@ class VRRenderer(
         android.opengl.Matrix.multiplyMM(finalMvp, 0, vpMatrix, 0, modelMatrix, 0)
 
         GLES20.glUniformMatrix4fv(mvp, 1, false, finalMvp, 0)
-        GLES20.glUniform4f(color, 0.4f, 0.8f, 1.0f, 1.0f)
+        GLES20.glUniform4f(color, 0.35f, 0.75f, 0.95f, 0.90f)
 
         mesh.vertexBuffer.position(0)
         GLES20.glEnableVertexAttribArray(pos)
@@ -872,6 +887,9 @@ class VRRenderer(
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, mesh.vertexCount)
         GLES20.glDisableVertexAttribArray(pos)
+
+        // Clear depth so user interface panels (LunarBar, Browser, Menus) are never clipped or hidden
+        GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
     }
 
     private fun drawStarfield(vpMatrix: FloatArray) {
@@ -1605,17 +1623,17 @@ class VRRenderer(
                     paint.style = Paint.Style.FILL
                     paint.textSize = 32f
                     paint.color = Color.parseColor("#00E5FF")
-                    canvas.drawText("CONFIGURAR POSIÇÃO DA CÂMERA", 60f, 75f, paint)
+                    canvas.drawText("POSIÇÃO DA CÂMERA NO CENÁRIO", 60f, 75f, paint)
 
                     paint.textSize = 22f
                     paint.color = Color.parseColor("#94A3B8")
-                    canvas.drawText("Arquivo: ${environmentPanel.selectedFile?.name ?: "Modelo 3D"}", 60f, 120f, paint)
-                    canvas.drawText("Ajuste as coordenadas da visão da câmera no cenário 3D:", 60f, 155f, paint)
+                    canvas.drawText("Modelo: ${environmentPanel.selectedFile?.name ?: "Modelo 3D"}", 60f, 115f, paint)
+                    canvas.drawText("Digite as coordenadas (X, Y, Z) ou use o botão ao lado para o VR calibrar:", 60f, 145f, paint)
 
                     // 3 Input boxes representation
                     val boxW = 280f
-                    val boxH = 90f
-                    val yBox = 210f
+                    val boxH = 85f
+                    val yBox = 190f
 
                     // X Box
                     paint.style = Paint.Style.FILL
@@ -1626,9 +1644,9 @@ class VRRenderer(
                     paint.color = Color.parseColor("#38BDF8")
                     canvas.drawRoundRect(RectF(60f, yBox, 60f + boxW, yBox + boxH), 16f, 16f, paint)
                     paint.style = Paint.Style.FILL
-                    paint.textSize = 28f
+                    paint.textSize = 26f
                     paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawText("X: ${environmentPanel.inputPosX}", 90f, yBox + 55f, paint)
+                    canvas.drawText("Eixo X: ${environmentPanel.inputPosX}", 90f, yBox + 52f, paint)
 
                     // Y Box
                     paint.style = Paint.Style.FILL
@@ -1639,9 +1657,9 @@ class VRRenderer(
                     paint.color = Color.parseColor("#38BDF8")
                     canvas.drawRoundRect(RectF(370f, yBox, 370f + boxW, yBox + boxH), 16f, 16f, paint)
                     paint.style = Paint.Style.FILL
-                    paint.textSize = 28f
+                    paint.textSize = 26f
                     paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawText("Y: ${environmentPanel.inputPosY}", 400f, yBox + 55f, paint)
+                    canvas.drawText("Eixo Y: ${environmentPanel.inputPosY}", 400f, yBox + 52f, paint)
 
                     // Z Box
                     paint.style = Paint.Style.FILL
@@ -1652,13 +1670,47 @@ class VRRenderer(
                     paint.color = Color.parseColor("#38BDF8")
                     canvas.drawRoundRect(RectF(680f, yBox, 680f + boxW, yBox + boxH), 16f, 16f, paint)
                     paint.style = Paint.Style.FILL
-                    paint.textSize = 28f
+                    paint.textSize = 26f
                     paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawText("Z: ${environmentPanel.inputPosZ}", 710f, yBox + 55f, paint)
+                    canvas.drawText("Eixo Z: ${environmentPanel.inputPosZ}", 710f, yBox + 52f, paint)
 
+                    // Hint text
                     paint.textSize = 20f
                     paint.color = Color.parseColor("#94A3B8")
-                    canvas.drawText("Toque em cada caixa para abrir o teclado virtual e digitar os valores.", 60f, 345f, paint)
+                    canvas.drawText("Toque em uma caixa para abrir o teclado virtual.", 60f, 310f, paint)
+
+                    // Representation of the two action buttons side by side
+                    val btnY = 340f
+                    val btnWAct = 430f
+                    val btnHAct = 90f
+
+                    // Confirm button representation
+                    val confirmRect = RectF(60f, btnY, 60f + btnWAct, btnY + btnHAct)
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.parseColor("#1E3A8A")
+                    canvas.drawRoundRect(confirmRect, 20f, 20f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.5f
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawRoundRect(confirmRect, 20f, 20f, paint)
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 26f
+                    paint.color = Color.parseColor("#F8FAFC")
+                    canvas.drawText("💾 Confirmar Posições", 100f, btnY + 54f, paint)
+
+                    // Skip (Auto) button right next to Confirm
+                    val skipRect = RectF(530f, btnY, 530f + btnWAct, btnY + btnHAct)
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.parseColor("#064E3B")
+                    canvas.drawRoundRect(skipRect, 20f, 20f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.5f
+                    paint.color = Color.parseColor("#10B981")
+                    canvas.drawRoundRect(skipRect, 20f, 20f, paint)
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 26f
+                    paint.color = Color.parseColor("#F8FAFC")
+                    canvas.drawText("⚡ Pular (VR Escolhe)", 570f, btnY + 54f, paint)
                 }
             }
 

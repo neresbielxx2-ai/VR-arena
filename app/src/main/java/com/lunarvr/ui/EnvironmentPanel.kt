@@ -111,13 +111,13 @@ class EnvironmentPanel(
             }
 
             EnvViewMode.CAMERA_POS_CONFIG -> {
-                val startY = centerY + 0.08f
+                val startY = centerY + 0.10f
                 val btnW = 0.24f
-                val btnH = 0.075f
+                val btnH = 0.08f
 
-                // 3 Interactive Text Boxes for Camera Position (X, Y, Z)
+                // 3 Interactive Text Boxes for Camera Position (X, Y, Z) - Side by Side
                 buttons.add(
-                    AppButton("btn_pos_x", "X: $inputPosX", centerX - 0.28f, startY, zPos, btnW, btnH) {
+                    AppButton("btn_pos_x", "Eixo X: $inputPosX", centerX - 0.28f, startY, zPos, btnW, btnH) {
                         onOpenKeyboardForPosition("X", inputPosX) { newVal ->
                             inputPosX = newVal
                             setupButtons(currentCenterX, currentCenterY)
@@ -127,7 +127,7 @@ class EnvironmentPanel(
                 )
 
                 buttons.add(
-                    AppButton("btn_pos_y", "Y: $inputPosY", centerX, startY, zPos, btnW, btnH) {
+                    AppButton("btn_pos_y", "Eixo Y: $inputPosY", centerX, startY, zPos, btnW, btnH) {
                         onOpenKeyboardForPosition("Y", inputPosY) { newVal ->
                             inputPosY = newVal
                             setupButtons(currentCenterX, currentCenterY)
@@ -137,7 +137,7 @@ class EnvironmentPanel(
                 )
 
                 buttons.add(
-                    AppButton("btn_pos_z", "Z: $inputPosZ", centerX + 0.28f, startY, zPos, btnW, btnH) {
+                    AppButton("btn_pos_z", "Eixo Z: $inputPosZ", centerX + 0.28f, startY, zPos, btnW, btnH) {
                         onOpenKeyboardForPosition("Z", inputPosZ) { newVal ->
                             inputPosZ = newVal
                             setupButtons(currentCenterX, currentCenterY)
@@ -146,9 +146,14 @@ class EnvironmentPanel(
                     }
                 )
 
-                // Save button
+                // Action buttons side-by-side: [ Confirmar Posições ]  [ Pular (Deixar VR Escolher) ]
+                val actionY = startY - 0.15f
+                val actionW = 0.42f
+                val actionH = 0.085f
+
+                // 1. Confirm and load with specified X, Y, Z coordinates
                 buttons.add(
-                    AppButton("btn_save_model", "💾 Confirmar e Carregar", centerX - 0.20f, startY - 0.16f, zPos, 0.38f, 0.08f) {
+                    AppButton("btn_save_model", "💾 Confirmar Posições", centerX - 0.23f, actionY, zPos, actionW, actionH) {
                         selectedFile?.let { file ->
                             val x = inputPosX.toFloatOrNull() ?: 0f
                             val y = inputPosY.toFloatOrNull() ?: 0f
@@ -161,9 +166,9 @@ class EnvironmentPanel(
                     }
                 )
 
-                // Auto position skip button
+                // 2. Button right next to Confirm: Let VR decide best camera position
                 buttons.add(
-                    AppButton("btn_skip_pos", "⚡ Pular (Auto Posição)", centerX + 0.22f, startY - 0.16f, zPos, 0.38f, 0.08f) {
+                    AppButton("btn_skip_pos", "⚡ Pular (VR Escolhe)", centerX + 0.23f, actionY, zPos, actionW, actionH) {
                         selectedFile?.let { file ->
                             customModelManager.loadCustomModel(file, 0f, 0f, 0f)
                             customModelManager.autoPositionCamera()
@@ -174,9 +179,9 @@ class EnvironmentPanel(
                     }
                 )
 
-                // Cancel button
+                // Back / Cancel button below
                 buttons.add(
-                    AppButton("btn_cancel_pos", "◀ Voltar", centerX, startY - 0.26f, zPos, 0.28f, 0.07f) {
+                    AppButton("btn_cancel_pos", "◀ Voltar", centerX, actionY - 0.11f, zPos, 0.30f, 0.07f) {
                         viewMode = EnvViewMode.MAIN_LIST
                         setupButtons(currentCenterX, currentCenterY)
                         onEnvironmentChanged()

@@ -25,22 +25,22 @@ class URLBar(
         val zPos = -1.45f
         val yPos = centerY
 
-        // Close button at top-left
-        buttons.add(AppButton("url_close_top_left", "✕", centerX - 0.76f, yPos, zPos, 0.08f, 0.08f) { onCloseClick() })
+        // Close button at top-left corner
+        buttons.add(AppButton("url_close_top_left", "✕", centerX - 0.75f, yPos, zPos, 0.06f, 0.07f) { onCloseClick() })
 
-        // Navigation controls
-        buttons.add(AppButton("url_back", "◀", centerX - 0.65f, yPos, zPos, 0.08f, 0.08f) { onBackClick() })
-        buttons.add(AppButton("url_fwd", "▶", centerX - 0.55f, yPos, zPos, 0.08f, 0.08f) { onForwardClick() })
-        buttons.add(AppButton("url_reload", "↻", centerX - 0.45f, yPos, zPos, 0.08f, 0.08f) { onRefreshClick() })
-        buttons.add(AppButton("url_home", "✦", centerX - 0.35f, yPos, zPos, 0.08f, 0.08f) { onHomeClick() })
+        // Navigation controls (Back, Forward, Reload, Home)
+        buttons.add(AppButton("url_back", "◀", centerX - 0.66f, yPos, zPos, 0.06f, 0.07f) { onBackClick() })
+        buttons.add(AppButton("url_fwd", "▶", centerX - 0.58f, yPos, zPos, 0.06f, 0.07f) { onForwardClick() })
+        buttons.add(AppButton("url_reload", "↻", centerX - 0.50f, yPos, zPos, 0.06f, 0.07f) { onRefreshClick() })
+        buttons.add(AppButton("url_home", "✦", centerX - 0.42f, yPos, zPos, 0.06f, 0.07f) { onHomeClick() })
 
-        // URL address bar button (spacious width: 0.80m)
-        buttons.add(AppButton("url_input", displayUrl, centerX + 0.12f, yPos, zPos, 0.80f, 0.08f) {
+        // Clean central URL input field (capsule address bar)
+        buttons.add(AppButton("url_input", displayUrl, centerX + 0.05f, yPos, zPos, 0.82f, 0.075f) {
             onUrlClick()
         })
 
-        // Resize button (+ Tamanho da Aba)
-        buttons.add(AppButton("url_resize", "⤢ $scaleName", centerX + 0.65f, yPos, zPos, 0.18f, 0.08f) {
+        // Corner Resize button
+        buttons.add(AppButton("url_resize", "⤢ $scaleName", centerX + 0.72f, yPos, zPos, 0.10f, 0.07f) {
             onResizeClick()
         })
     }
