@@ -41,4 +41,10 @@ class InteractionManagerTest {
         )
         assertFalse(box.intersects(missRay))
     }
+    @Test
+    fun testAllClassesCompile() {
+        // Simple test to compile references in test phase
+        val pos = com.lunarvr.environment.CameraPosition(1f, 2f, 3f)
+        org.junit.Assert.assertEquals(1f, pos.posX)
+    }
 }
