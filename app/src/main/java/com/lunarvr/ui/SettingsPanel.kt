@@ -143,8 +143,8 @@ class SettingsPanel(
                 economicMode = false
                 vrSession.headTracking.invertYaw = false
                 vrSession.headTracking.invertPitch = false
-                lunarBar.currentStyle = BarStyle.DEFAULT
-                lunarBar.currentColorTheme = BarColorTheme.CYAN_NEON
+                lunarBar.currentStyle = BarStyle.META_QUEST
+                lunarBar.currentColorTheme = BarColorTheme.DEEP_OCEAN
                 onResetToDefaults()
                 setupButtons()
                 onSettingChanged()

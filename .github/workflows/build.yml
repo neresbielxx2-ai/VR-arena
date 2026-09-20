@@ -38,17 +38,7 @@ jobs:
         run: gradle test --no-daemon --stacktrace || true
 
       - name: Build Debug APK
-        run: |
-          set +e
-          gradle compileDebugKotlin --no-daemon --stacktrace > build.log 2>&1
-          EC=$?
-          if [ $EC -ne 0 ]; then
-            echo "::error::Kotlin build failed with code $EC"
-            grep -E "e: |error: |FAILED" build.log | while IFS= read -r line; do
-              echo "::error::$line"
-            done
-            exit $EC
-          fi
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Build Release APK (Unsigned)
         run: gradle assembleRelease --no-daemon --stacktrace || true
