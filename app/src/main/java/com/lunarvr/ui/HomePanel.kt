@@ -1,15 +1,15 @@
 package com.lunarvr.ui
 
-import com.lunarvr.handtracking.InteractableElement
-
 enum class HomeTab {
     APPS,
-    JOGOS
+    JOGOS,
+    PC_SHARE
 }
 
 class HomePanel(
     private val onOpenYouTube: () -> Unit,
-    private val onTabChanged: () -> Unit
+    private val onTabChanged: () -> Unit,
+    private val onRegeneratePin: () -> Unit
 ) {
     var isVisible: Boolean = true
     var currentTab: HomeTab = HomeTab.APPS
@@ -30,13 +30,13 @@ class HomePanel(
         currentCenterZ = centerZ
         buttons.clear()
 
-        // Tab Selector Buttons at the top: [ Apps ]  [ Jogos ]
-        val tabW = 0.28f
+        // 3 Tab Selector Buttons at the top: [ Apps ]  [ Jogos ]  [ Conexão PC ]
+        val tabW = 0.34f
         val tabH = 0.075f
         val tabY = centerY + 0.32f
 
         buttons.add(
-            AppButton("btn_tab_apps", "Apps", centerX - 0.18f, tabY, centerZ, tabW, tabH) {
+            AppButton("btn_tab_apps", "Apps", centerX - 0.38f, tabY, centerZ, tabW, tabH) {
                 currentTab = HomeTab.APPS
                 setupButtons()
                 onTabChanged()
@@ -44,26 +44,49 @@ class HomePanel(
         )
 
         buttons.add(
-            AppButton("btn_tab_jogos", "Jogos", centerX + 0.18f, tabY, centerZ, tabW, tabH) {
+            AppButton("btn_tab_jogos", "Jogos", centerX, tabY, centerZ, tabW, tabH) {
                 currentTab = HomeTab.JOGOS
                 setupButtons()
                 onTabChanged()
             }
         )
 
-        // If on Apps tab, add the YouTube App card button
-        if (currentTab == HomeTab.APPS) {
-            // YouTube Card in grid (large comfortable card button)
-            val cardW = 0.42f
-            val cardH = 0.26f
-            val cardX = centerX - 0.32f
-            val cardY = centerY + 0.04f
+        buttons.add(
+            AppButton("btn_tab_pc_share", "Conexão PC", centerX + 0.38f, tabY, centerZ, tabW, tabH) {
+                currentTab = HomeTab.PC_SHARE
+                setupButtons()
+                onTabChanged()
+            }
+        )
 
-            buttons.add(
-                AppButton("btn_app_youtube", "YouTube VR", cardX, cardY, centerZ, cardW, cardH) {
-                    onOpenYouTube()
-                }
-            )
+        // Tab-specific interactive elements
+        when (currentTab) {
+            HomeTab.APPS -> {
+                val cardW = 0.42f
+                val cardH = 0.26f
+                val cardX = centerX - 0.32f
+                val cardY = centerY + 0.04f
+
+                buttons.add(
+                    AppButton("btn_app_youtube", "YouTube VR", cardX, cardY, centerZ, cardW, cardH) {
+                        onOpenYouTube()
+                    }
+                )
+            }
+            HomeTab.PC_SHARE -> {
+                val btnW = 0.42f
+                val btnH = 0.08f
+                buttons.add(
+                    AppButton("btn_regen_pin", "Novo Código Conexão", centerX, centerY - 0.22f, centerZ, btnW, btnH) {
+                        onRegeneratePin()
+                        setupButtons()
+                        onTabChanged()
+                    }
+                )
+            }
+            HomeTab.JOGOS -> {
+                // No games available yet
+            }
         }
     }
 }

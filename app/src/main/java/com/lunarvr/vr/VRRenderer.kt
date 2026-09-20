@@ -26,6 +26,8 @@ import com.lunarvr.ui.EnvironmentPanel
 import com.lunarvr.ui.GrabHandle
 import com.lunarvr.ui.HomePanel
 import com.lunarvr.ui.HomeTab
+import com.lunarvr.network.VRStreamServer
+import com.lunarvr.ui.ResizeHandle
 import com.lunarvr.ui.LunarBar
 import com.lunarvr.ui.LunarNavDestination
 import com.lunarvr.ui.ModernIcons
@@ -81,8 +83,19 @@ class VRRenderer(
         },
         onTabChanged = {
             refreshInteractiveElements()
+        },
+        onRegeneratePin = {
+            vrStreamServer.regeneratePin()
+            showNotification("Novo Código PC: " + vrStreamServer.connectionPin)
         }
     )
+
+    // PC Screen Sharing WebSocket / TCP Stream Server
+    val vrStreamServer = VRStreamServer()
+
+    // Side Resize Handle for Windows (Browser, Home, etc.)
+    private var browserResizeHandle = ResizeHandle("resize_browser", 0.85f, 0.08f, -1.45f)
+    private var homeResizeHandle = ResizeHandle("resize_home", 0.78f, 0.12f, -1.35f)
 
     val browserController = BrowserController()
     var browserView: BrowserView? = null
@@ -187,6 +200,7 @@ class VRRenderer(
             initBackdrops()
 
             browserView = BrowserView(context, browserController)
+            vrStreamServer.start()
             interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
 
             // Dynamic Spherical Drag Handlers: smoothly reposition panels 360° around user without invisible walls!
@@ -246,6 +260,21 @@ class VRRenderer(
                 envGrabHandle.y = height - 0.38f
                 envGrabHandle.z = ez
                 environmentPanel.setupButtons(ex, height)
+            }
+
+            browserResizeHandle.onResizeDelta = { gazeYaw ->
+                val baseYaw = browserYawDeg
+                val diff = gazeYaw - baseYaw
+                // If looking to the right (> baseYaw), scale increases; if to the left, decreases
+                val newScale = (1.0f + diff * 0.05f).coerceIn(0.7f, 1.8f)
+                applyBrowserScaleFactor(newScale)
+            }
+
+            homeResizeHandle.onResizeDelta = { gazeYaw ->
+                val baseYaw = homeYawDeg
+                val diff = gazeYaw - baseYaw
+                val newScale = (1.0f + diff * 0.05f).coerceIn(0.7f, 1.8f)
+                applyHomeScaleFactor(newScale)
             }
 
             homeGrabHandle.onDragUpdateSpherical = { yaw, height, dist ->
@@ -312,6 +341,47 @@ class VRRenderer(
         }
     }
 
+    private fun applyBrowserScaleFactor(scale: Float) {
+        val baseW = 1.60f * scale
+        val baseH = 1.00f * scale
+        browserPanel?.setDimensions(baseW, baseH)
+        urlPanel?.setDimensions(baseW, 0.15f * scale)
+        browserTouchElement.width = baseW
+        browserTouchElement.height = baseH
+
+        val rad = Math.toRadians(browserYawDeg.toDouble())
+        val dist = 1.45f
+        val bx = (dist * Math.sin(rad)).toFloat()
+        val bz = (-dist * Math.cos(rad)).toFloat()
+        applyBrowserTransform(bx, browserHeightY, bz, -browserYawDeg)
+    }
+
+    private fun applyHomeScaleFactor(scale: Float) {
+        val baseW = 1.45f * scale
+        val baseH = 0.88f * scale
+        homeVRPanel?.setDimensions(baseW, baseH)
+
+        val rad = Math.toRadians(homeYawDeg.toDouble())
+        val dist = 1.35f
+        val hx = (dist * Math.sin(rad)).toFloat()
+        val hz = (-dist * Math.cos(rad)).toFloat()
+
+        homeVRPanel?.let {
+            it.x = hx
+            it.y = homeHeightY
+            it.z = hz
+            it.rotationYDeg = -homeYawDeg
+        }
+        homeGrabHandle.x = hx
+        homeGrabHandle.y = homeHeightY - (baseH / 2f) - 0.05f
+        homeGrabHandle.z = hz
+        homeResizeHandle.x = hx + (baseW / 2f) + 0.08f
+        homeResizeHandle.y = homeHeightY
+        homeResizeHandle.z = hz
+
+        homePanel.setupButtons(hx, homeHeightY, hz)
+    }
+
     private fun cycleBrowserScale() {
         currentBrowserScaleIdx = (currentBrowserScaleIdx + 1) % browserScales.size
         val scale = browserScales[currentBrowserScaleIdx]
@@ -364,6 +434,10 @@ class VRRenderer(
         browserGrabHandle.z = bz
 
         urlBar.setupButtons(bx, by + (panelH / 2f) + (urlH / 2f) + 0.02f)
+
+        browserResizeHandle.x = bx + (1.60f * scale / 2f) + 0.08f
+        browserResizeHandle.y = by
+        browserResizeHandle.z = bz
     }
 
     private fun initBackdrops() {
@@ -425,6 +499,13 @@ class VRRenderer(
             keyboardGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.4f), 1.25f)
             homeGrabHandle.updateGrabSpherical(gazeYawDeg, gazeHeightY.coerceIn(-0.6f, 0.6f), 1.35f)
 
+            // Update Side Resize Handles:
+            if (currentDestination == LunarNavDestination.BROWSER) {
+                browserResizeHandle.updateResize(gazeYawDeg)
+            } else if (currentDestination == LunarNavDestination.HOME) {
+                homeResizeHandle.updateResize(gazeYawDeg)
+            }
+
             // Update dynamic UI textures
             updateBarPanel()
             if (currentDestination == LunarNavDestination.HOME) {
@@ -439,6 +520,16 @@ class VRRenderer(
 
             if (vrKeyboard.isVisible) {
                 updateKeyboardPanel()
+            }
+
+            // Push screen frame to connected PC client if streaming is active
+            if (vrStreamServer.isClientConnected.get()) {
+                val streamBmp = when (currentDestination) {
+                    LunarNavDestination.BROWSER -> browserView?.captureBitmap()
+                    LunarNavDestination.HOME -> homeVRPanel?.surfaceBitmap
+                    else -> barPanel?.surfaceBitmap
+                }
+                vrStreamServer.pushFrame(streamBmp)
             }
 
             val halfWidth = screenWidth / 2
@@ -676,12 +767,13 @@ class VRRenderer(
         }
         interactionManager.register(lunarBar.grabHandle)
 
-        // Register Home Panel buttons and drag handle if Home is open
+        // Register Home Panel buttons, side resize handle, and drag handle if Home is open
         if (currentDestination == LunarNavDestination.HOME) {
             for (btn in homePanel.buttons) {
                 interactionManager.register(btn)
             }
             interactionManager.register(homeGrabHandle)
+            interactionManager.register(homeResizeHandle)
         }
 
         // Register Browser buttons, web click touch surface, and drag handle
@@ -696,6 +788,7 @@ class VRRenderer(
             }
             interactionManager.register(browserTouchElement)
             interactionManager.register(browserGrabHandle)
+            interactionManager.register(browserResizeHandle)
         }
 
         // Register Settings buttons and drag handle if Settings is open
@@ -912,8 +1005,8 @@ class VRRenderer(
             paint.color = Color.parseColor("#F8FAFC")
             canvas.drawText("Biblioteca", 50f, 75f, paint)
 
-            // Draw Meta Quest style pill segment for Tabs: [ Apps ]  [ Jogos ]
-            val tabContainerRect = RectF(360f, 32f, 740f, 96f)
+            // Draw Meta Quest style pill segment for Tabs: [ Apps ]  [ Jogos ]  [ Conexão PC ]
+            val tabContainerRect = RectF(280f, 32f, 940f, 96f)
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#1E293B")
             canvas.drawRoundRect(tabContainerRect, 28f, 28f, paint)
@@ -921,20 +1014,18 @@ class VRRenderer(
             // Tab 1: Apps
             val isApps = (homePanel.currentTab == HomeTab.APPS)
             val appsBtn = homePanel.buttons.find { it.id == "btn_tab_apps" }
-            val appsRect = RectF(364f, 36f, 546f, 92f)
+            val appsRect = RectF(284f, 36f, 480f, 92f)
             paint.style = Paint.Style.FILL
             paint.color = when {
-                isApps -> Color.parseColor("#6366F1") // Highlight active tab
+                isApps -> Color.parseColor("#6366F1")
                 appsBtn?.isHovered == true -> Color.parseColor("#334155")
                 else -> Color.TRANSPARENT
             }
             canvas.drawRoundRect(appsRect, 24f, 24f, paint)
-
             paint.textSize = 24f
             paint.color = if (isApps) Color.WHITE else Color.parseColor("#94A3B8")
             var tw = paint.measureText("Apps")
             canvas.drawText("Apps", appsRect.centerX() - tw / 2f, 72f, paint)
-
             if (appsBtn?.isHovered == true && appsBtn.hoverProgress > 0f) {
                 paint.color = Color.parseColor("#38BDF8")
                 paint.strokeWidth = 4f
@@ -945,24 +1036,43 @@ class VRRenderer(
             // Tab 2: Jogos
             val isJogos = (homePanel.currentTab == HomeTab.JOGOS)
             val jogosBtn = homePanel.buttons.find { it.id == "btn_tab_jogos" }
-            val jogosRect = RectF(554f, 36f, 736f, 92f)
+            val jogosRect = RectF(490f, 36f, 690f, 92f)
             paint.style = Paint.Style.FILL
             paint.color = when {
-                isJogos -> Color.parseColor("#6366F1") // Highlight active tab
+                isJogos -> Color.parseColor("#6366F1")
                 jogosBtn?.isHovered == true -> Color.parseColor("#334155")
                 else -> Color.TRANSPARENT
             }
             canvas.drawRoundRect(jogosRect, 24f, 24f, paint)
-
             paint.color = if (isJogos) Color.WHITE else Color.parseColor("#94A3B8")
             tw = paint.measureText("Jogos")
             canvas.drawText("Jogos", jogosRect.centerX() - tw / 2f, 72f, paint)
-
             if (jogosBtn?.isHovered == true && jogosBtn.hoverProgress > 0f) {
                 paint.color = Color.parseColor("#38BDF8")
                 paint.strokeWidth = 4f
                 val progW = (jogosRect.width() - 20f) * jogosBtn.hoverProgress
                 canvas.drawLine(jogosRect.left + 10f, jogosRect.bottom - 4f, jogosRect.left + 10f + progW, jogosRect.bottom - 4f, paint)
+            }
+
+            // Tab 3: Conexão Compartilhamento PC
+            val isPc = (homePanel.currentTab == HomeTab.PC_SHARE)
+            val pcBtn = homePanel.buttons.find { it.id == "btn_tab_pc_share" }
+            val pcRect = RectF(700f, 36f, 936f, 92f)
+            paint.style = Paint.Style.FILL
+            paint.color = when {
+                isPc -> Color.parseColor("#6366F1")
+                pcBtn?.isHovered == true -> Color.parseColor("#334155")
+                else -> Color.TRANSPARENT
+            }
+            canvas.drawRoundRect(pcRect, 24f, 24f, paint)
+            paint.color = if (isPc) Color.WHITE else Color.parseColor("#94A3B8")
+            tw = paint.measureText("Conexão PC")
+            canvas.drawText("Conexão PC", pcRect.centerX() - tw / 2f, 72f, paint)
+            if (pcBtn?.isHovered == true && pcBtn.hoverProgress > 0f) {
+                paint.color = Color.parseColor("#38BDF8")
+                paint.strokeWidth = 4f
+                val progW = (pcRect.width() - 20f) * pcBtn.hoverProgress
+                canvas.drawLine(pcRect.left + 10f, pcRect.bottom - 4f, pcRect.left + 10f + progW, pcRect.bottom - 4f, paint)
             }
 
             // Divider line below header
@@ -1018,7 +1128,7 @@ class VRRenderer(
                 canvas.drawText("✦ Selecione o YouTube para abrir o aplicativo de vídeo em tela cheia.", 530f, 210f, paint)
                 canvas.drawText("✦ Navegação limpa e focada no conteúdo, sem barras adicionais.", 530f, 255f, paint)
 
-            } else {
+            } else if (homePanel.currentTab == HomeTab.JOGOS) {
                 // Jogos Tab: Empty State with message "Nenhum jogo disponível."
                 paint.style = Paint.Style.FILL
                 paint.textSize = 34f
@@ -1032,6 +1142,71 @@ class VRRenderer(
                 val subMsg = "Novos jogos e experiências em breve no Lunar VR."
                 val sw = paint.measureText(subMsg)
                 canvas.drawText(subMsg, 640f - sw / 2f, 410f, paint)
+
+            } else if (homePanel.currentTab == HomeTab.PC_SHARE) {
+                // Conexão Compartilhamento PC Tab: Meta Quest Link inspired interface
+                paint.style = Paint.Style.FILL
+                paint.color = Color.parseColor("#161E31")
+                val shareCardRect = RectF(120f, 150f, 1160f, 620f)
+                canvas.drawRoundRect(shareCardRect, 28f, 28f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2f
+                paint.color = Color.parseColor("#00E5FF")
+                canvas.drawRoundRect(shareCardRect, 28f, 28f, paint)
+
+                paint.style = Paint.Style.FILL
+                paint.textSize = 30f
+                paint.color = Color.parseColor("#00E5FF")
+                canvas.drawText("💻 CONEXÃO COMPARTILHAMENTO PC (LUNAR CONNECTIONS)", 160f, 210f, paint)
+
+                paint.textSize = 22f
+                paint.color = Color.parseColor("#E2E8F0")
+                canvas.drawText("Abra o 'Lunar connections.exe' no seu computador Windows e digite a senha abaixo:", 160f, 260f, paint)
+
+                // Large Glowing PIN Box
+                val pinBoxRect = RectF(340f, 300f, 940f, 430f)
+                paint.color = Color.parseColor("#0E1424")
+                canvas.drawRoundRect(pinBoxRect, 20f, 20f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                paint.color = Color.parseColor("#38BDF8")
+                canvas.drawRoundRect(pinBoxRect, 20f, 20f, paint)
+
+                paint.style = Paint.Style.FILL
+                paint.textSize = 54f
+                paint.color = Color.parseColor("#38BDF8")
+                val pinTxt = vrStreamServer.connectionPin
+                val pw = paint.measureText(pinTxt)
+                canvas.drawText(pinTxt, pinBoxRect.centerX() - pw / 2f, 385f, paint)
+
+                // Status info line
+                paint.textSize = 22f
+                val isConn = vrStreamServer.isClientConnected.get()
+                val statusTxt = if (isConn) "● Conectado ao PC (${vrStreamServer.clientIp}) - Transmitindo Tela VR" else "● Aguardando conexão do PC..."
+                paint.color = if (isConn) Color.parseColor("#10B981") else Color.parseColor("#F59E0B")
+                canvas.drawText(statusTxt, 160f, 480f, paint)
+
+                paint.color = Color.parseColor("#94A3B8")
+                canvas.drawText("IP do Celular na rede Wi-Fi: ${vrStreamServer.getLocalIpAddress()}  |  Porta: ${VRStreamServer.PORT}", 160f, 520f, paint)
+
+                // Regenerate button styling
+                val regenBtn = homePanel.buttons.find { it.id == "btn_regen_pin" }
+                val rbRect = RectF(440f, 550f, 840f, 600f)
+                paint.color = if (regenBtn?.isHovered == true) Color.parseColor("#4F46E5") else Color.parseColor("#312E81")
+                canvas.drawRoundRect(rbRect, 16f, 16f, paint)
+                paint.color = Color.WHITE
+                paint.textSize = 20f
+                val rtw = paint.measureText("Novo Código Conexão")
+                canvas.drawText("Novo Código Conexão", rbRect.centerX() - rtw / 2f, 582f, paint)
+
+                if (regenBtn?.isHovered == true && regenBtn.hoverProgress > 0f) {
+                    paint.color = Color.parseColor("#38BDF8")
+                    paint.strokeWidth = 5f
+                    val progW = (rbRect.width() - 20f) * regenBtn.hoverProgress
+                    canvas.drawLine(rbRect.left + 10f, rbRect.bottom - 4f, rbRect.left + 10f + progW, rbRect.bottom - 4f, paint)
+                }
             }
 
             // Bottom drag handle

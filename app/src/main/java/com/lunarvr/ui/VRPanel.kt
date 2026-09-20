@@ -23,7 +23,7 @@ class VRPanel(
     var rotationYDeg: Float = 0f
 ) {
     private var textureId: Int = 0
-    private var surfaceBitmap: Bitmap = Bitmap.createBitmap(pixelWidth, pixelHeight, Bitmap.Config.ARGB_8888)
+    var surfaceBitmap: Bitmap = Bitmap.createBitmap(pixelWidth, pixelHeight, Bitmap.Config.ARGB_8888)
     private var canvas: Canvas = Canvas(surfaceBitmap)
 
     private val vertexCoords = FloatArray(12)

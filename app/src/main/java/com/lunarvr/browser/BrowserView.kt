@@ -154,8 +154,16 @@ class BrowserView(private val context: Context, private val controller: BrowserC
         }
     }
 
+    private var lastCaptureTime = 0L
+
     fun captureBitmap(): Bitmap? {
         val wv = webView ?: return null
+        val now = SystemClock.uptimeMillis()
+        if (now - lastCaptureTime < 33L) {
+            return webViewBitmap
+        }
+        lastCaptureTime = now
+
         synchronized(bitmapLock) {
             try {
                 val canvas = Canvas(webViewBitmap)
