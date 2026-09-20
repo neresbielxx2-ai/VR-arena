@@ -27,6 +27,14 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     var invertPitch: Boolean = false
     var invertYaw: Boolean = false
+    var is6DofEnabled: Boolean = false
+    var posX: Float = 0f
+    var posY: Float = 0f
+    var posZ: Float = 0f
+    private var velX: Float = 0f
+    private var velY: Float = 0f
+    private var velZ: Float = 0f
+    private var lastAccelTimestamp: Long = 0L
 
     // Raw device rotation matrix (natural portrait)
     private val rawRotationMatrix = FloatArray(16)
