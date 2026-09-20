@@ -42,9 +42,14 @@ class InteractionManagerTest {
         assertFalse(box.intersects(missRay))
     }
     @Test
-    fun testAllClassesCompile() {
-        // Simple test to compile references in test phase
-        val pos = com.lunarvr.environment.CameraPosition(1f, 2f, 3f)
-        org.junit.Assert.assertEquals(1f, pos.posX)
+    fun testKeyboardClearAll() {
+        val inputManager = com.lunarvr.keyboard.TextInputManager()
+        inputManager.bindTarget(object : com.lunarvr.keyboard.TextInputManager.TextInputTarget {
+            override fun onTextUpdated(text: String) {}
+            override fun onInputSubmitted(text: String) {}
+        }, "Hello VR")
+        org.junit.Assert.assertEquals("Hello VR", inputManager.getCurrentText())
+        inputManager.clearAll()
+        org.junit.Assert.assertEquals("", inputManager.getCurrentText())
     }
 }
