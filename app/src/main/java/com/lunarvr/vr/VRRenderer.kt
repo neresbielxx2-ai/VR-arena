@@ -1375,7 +1375,7 @@ class VRRenderer(
     }
 
     private fun updateEnvironmentPanel() {
-        environmentsVRPanel?.drawCustom { canvas, paint ->
+        envVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
             // Background panel
