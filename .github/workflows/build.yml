@@ -75,14 +75,15 @@ jobs:
           pip install pyinstaller pillow
 
       - name: Build Lunar connections .exe
+        shell: cmd
         working-directory: pc-client
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "Lunar connections" main.py
-          ls -la dist/
+          pyinstaller --noconfirm --onefile --windowed --name "Lunar connections" main.py
+          dir dist
 
       - name: Upload PC Companion Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Lunar-Connections-PC
-          path: pc-client/dist/Lunar connections/
+          path: pc-client/dist/Lunar connections.exe
           retention-days: 14
