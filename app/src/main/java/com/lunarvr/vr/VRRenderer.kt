@@ -94,6 +94,12 @@ class VRRenderer(
     val vrStreamServer = VRStreamServer()
 
     // Side Resize Handle for Windows (Browser, Home, etc.)
+    // Full VR View capture for PC Streaming
+    private var streamPixelBuffer: java.nio.ByteBuffer? = null
+    private var streamFrameBitmap: Bitmap? = null
+    private var streamBufferW = 0
+    private var streamBufferH = 0
+    private var lastStreamCaptureTime = 0L
     private var browserResizeHandle = ResizeHandle("resize_browser", 0.85f, 0.08f, -1.45f)
     private var homeResizeHandle = ResizeHandle("resize_home", 0.78f, 0.12f, -1.35f)
 
@@ -199,7 +205,11 @@ class VRRenderer(
             initPanels()
             initBackdrops()
 
-            browserView = BrowserView(context, browserController)
+            browserView = BrowserView(context, browserController).apply {
+                onTextInputRequested = { initialText, onSubmit ->
+                    openKeyboardForWebInput(initialText, onSubmit)
+                }
+            }
             vrStreamServer.start()
             interactionManager.userDwellTimeMs = settingsPanel.getDwellTimeMs()
 
@@ -522,15 +532,7 @@ class VRRenderer(
                 updateKeyboardPanel()
             }
 
-            // Push screen frame to connected PC client if streaming is active
-            if (vrStreamServer.isClientConnected.get()) {
-                val streamBmp = when (currentDestination) {
-                    LunarNavDestination.BROWSER -> browserView?.captureBitmap()
-                    LunarNavDestination.HOME -> homeVRPanel?.surfaceBitmap
-                    else -> barPanel?.surfaceBitmap
-                }
-                vrStreamServer.pushFrame(streamBmp)
-            }
+
 
             val halfWidth = screenWidth / 2
 
@@ -553,10 +555,51 @@ class VRRenderer(
                 vrSession.stereoCamera.getRightEyeViewMatrix(), 0
             )
             renderScene(viewProjectionMatrix, vrSession.stereoCamera.getProjectionMatrix())
+
+            // Stream full stereoscopic/VR world view to PC Companion!
+            if (vrStreamServer.isClientConnected.get()) {
+                captureAndStreamFullVRView()
+            }
         } catch (e: Throwable) {
             Log.e("LunarVR", "Error in onDrawFrame", e)
             showNotification("Auto-recuperação do renderizador...")
         }
+    }
+
+    private fun captureAndStreamFullVRView() {
+        val now = SystemClock.uptimeMillis()
+        val minInterval = 1000L / vrStreamServer.targetFps
+        if (now - lastStreamCaptureTime < minInterval) return
+        lastStreamCaptureTime = now
+
+        // Downscaled stream resolution for ultra-low latency: 960x540
+        val targetW = 960
+        val targetH = 540
+
+        if (streamFrameBitmap == null || streamBufferW != targetW || streamBufferH != targetH) {
+            streamBufferW = targetW
+            streamBufferH = targetH
+            streamFrameBitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+            streamPixelBuffer = java.nio.ByteBuffer.allocateDirect(targetW * targetH * 4)
+                .order(java.nio.ByteOrder.nativeOrder())
+        }
+
+        val buf = streamPixelBuffer ?: return
+        val bmp = streamFrameBitmap ?: return
+
+        buf.rewind()
+        // Read full rendered VR screen from GL Framebuffer
+        GLES20.glReadPixels(0, 0, targetW, targetH, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
+        buf.rewind()
+
+        bmp.copyPixelsFromBuffer(buf)
+
+        // OpenGL texture coordinates have origin at bottom-left; flip vertically for display
+        val matrix = android.graphics.Matrix()
+        matrix.preScale(1.0f, -1.0f)
+        val flippedBmp = Bitmap.createBitmap(bmp, 0, 0, targetW, targetH, matrix, false)
+
+        vrStreamServer.pushFrame(flippedBmp)
     }
 
     private fun renderScene(vpMatrix: FloatArray, projMatrix: FloatArray) {
@@ -579,7 +622,9 @@ class VRRenderer(
         if (currentDestination == LunarNavDestination.HOME) {
             homeVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         } else if (currentDestination == LunarNavDestination.BROWSER) {
-            urlPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+            if (!isYouTubeMode) {
+                urlPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+            }
             browserPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         } else if (currentDestination == LunarNavDestination.SETTINGS) {
             settingsVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
@@ -739,6 +784,34 @@ class VRRenderer(
         refreshInteractiveElements()
     }
 
+    private fun openKeyboardForWebInput(initialText: String, onSubmit: (String) -> Unit) {
+        vrKeyboard.show()
+        textInputManager.bindTarget(object : TextInputManager.TextInputTarget {
+            override fun onTextUpdated(text: String) {
+                // Live preview inside keyboard prompt
+            }
+
+            override fun onInputSubmitted(text: String) {
+                vrKeyboard.hide()
+                onSubmit(text)
+                refreshInteractiveElements()
+            }
+        }, initialText)
+        val kx = keyboardVRPanel?.x ?: 0f
+        val ky = keyboardVRPanel?.y ?: -0.05f
+        val kz = keyboardVRPanel?.z ?: -1.25f
+        keyboardVRPanel?.let {
+            it.x = kx
+            it.y = ky
+            it.z = kz
+        }
+        keyboardGrabHandle.x = kx
+        keyboardGrabHandle.y = ky - 0.28f
+        keyboardGrabHandle.z = kz
+        setupKeyboardButtons(kx, ky, kz)
+        refreshInteractiveElements()
+    }
+
     private fun openKeyboardForUrl() {
         vrKeyboard.show()
         textInputManager.bindTarget(object : TextInputManager.TextInputTarget {
@@ -754,7 +827,18 @@ class VRRenderer(
                 refreshInteractiveElements()
             }
         }, urlBar.displayUrl)
-        setupKeyboardButtons(keyboardVRPanel?.x ?: 0f, keyboardVRPanel?.y ?: -0.05f, keyboardVRPanel?.z ?: -1.25f)
+        val kx = keyboardVRPanel?.x ?: 0f
+        val ky = keyboardVRPanel?.y ?: -0.05f
+        val kz = keyboardVRPanel?.z ?: -1.25f
+        keyboardVRPanel?.let {
+            it.x = kx
+            it.y = ky
+            it.z = kz
+        }
+        keyboardGrabHandle.x = kx
+        keyboardGrabHandle.y = ky - 0.28f
+        keyboardGrabHandle.z = kz
+        setupKeyboardButtons(kx, ky, kz)
         refreshInteractiveElements()
     }
 
@@ -782,9 +866,6 @@ class VRRenderer(
                 for (btn in urlBar.buttons) {
                     interactionManager.register(btn)
                 }
-            }
-            for (btn in urlBar.buttons) {
-                interactionManager.register(btn)
             }
             interactionManager.register(browserTouchElement)
             interactionManager.register(browserGrabHandle)

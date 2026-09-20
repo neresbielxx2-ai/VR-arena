@@ -11,7 +11,11 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
-class BrowserView(private val context: Context, private val controller: BrowserController) {
+class BrowserView(
+    private val context: Context,
+    private val controller: BrowserController,
+    var onTextInputRequested: ((initialText: String, onInputSubmitted: (String) -> Unit) -> Unit)? = null
+) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
@@ -28,9 +32,14 @@ class BrowserView(private val context: Context, private val controller: BrowserC
                 wv.settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
+                    databaseEnabled = true
                     useWideViewPort = true
                     loadWithOverviewMode = true
+                    mediaPlaybackRequiresUserGesture = false
+                    setRenderPriority(android.webkit.WebSettings.RenderPriority.HIGH)
+                    cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
                 }
+                wv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                 wv.layout(0, 0, width, height)
 
                 wv.webViewClient = object : WebViewClient() {
@@ -101,17 +110,62 @@ class BrowserView(private val context: Context, private val controller: BrowserC
                 down.recycle()
                 up.recycle()
 
-                // Execute JavaScript elementFromPoint tap for HTML elements that only listen to click / focus events
+                // Execute JavaScript elementFromPoint tap and detect text input fields
                 val jsClick = """
                     (function() {
                         var elem = document.elementFromPoint($px, $py);
                         if (elem) {
                             elem.focus();
                             elem.click();
+                            var tag = elem.tagName ? elem.tagName.toLowerCase() : '';
+                            var type = elem.type ? elem.type.toLowerCase() : '';
+                            var isInput = (tag === 'input' && (type === 'text' || type === 'search' || type === 'url' || type === 'password' || type === 'email' || type === 'number' || type === '')) || tag === 'textarea' || elem.isContentEditable;
+                            if (isInput) {
+                                return JSON.stringify({ isText: true, val: elem.value || elem.innerText || '' });
+                            }
                         }
+                        return JSON.stringify({ isText: false });
                     })();
                 """.trimIndent()
-                wv.evaluateJavascript(jsClick, null)
+
+                wv.evaluateJavascript(jsClick) { result ->
+                    try {
+                        if (result != null && result != "null") {
+                            val isText = result.contains("isText") && result.contains("true")
+                            if (isText) {
+                                mainHandler.post {
+                                    onTextInputRequested?.invoke("") { submittedText ->
+                                        mainHandler.post {
+                                            val escaped = submittedText.replace("'", "\\'").replace("\n", " ")
+                                            val insertJs = """
+                                                (function() {
+                                                    var elem = document.activeElement;
+                                                    if (elem) {
+                                                        if ('value' in elem) {
+                                                            elem.value = '$escaped';
+                                                        } else if (elem.isContentEditable) {
+                                                            elem.innerText = '$escaped';
+                                                        }
+                                                        elem.dispatchEvent(new Event('input', { bubbles: true }));
+                                                        elem.dispatchEvent(new Event('change', { bubbles: true }));
+                                                        if (elem.form) {
+                                                            elem.form.submit();
+                                                        } else {
+                                                            var enterEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, keyCode: 13 });
+                                                            elem.dispatchEvent(enterEvent);
+                                                        }
+                                                    }
+                                                })();
+                                            """.trimIndent()
+                                            wv.evaluateJavascript(insertJs, null)
+                                            isDirty = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
 
                 isDirty = true
             } catch (_: Exception) {}
