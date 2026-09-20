@@ -3,6 +3,7 @@ package com.lunarvr.keyboard
 interface VRKeyboardListener {
     fun onKeyPressed(character: String)
     fun onBackspace()
+    fun onClearAll()
     fun onSpace()
     fun onEnter()
     fun onCloseKeyboard()
@@ -20,7 +21,10 @@ class VRKeyboard {
     var isVisible: Boolean = false
     var currentMode: KeyboardMode = KeyboardMode.LOWERCASE
 
-    // Full VR keyboard layout inspired by Meta Quest OS system keyboard
+    // Modal safety confirmation state when user long-dwells on DEL
+    var showClearConfirmationModal: Boolean = false
+
+    // Enterprise VR layout (smooth, refined keys matching Meta Quest / VisionOS)
     val lowercaseRows = listOf(
         listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
         listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
@@ -65,12 +69,27 @@ class VRKeyboard {
         }
     }
 
+    fun requestClearAllPrompt() {
+        showClearConfirmationModal = true
+    }
+
+    fun confirmClearAll() {
+        showClearConfirmationModal = false
+        listener?.onClearAll()
+    }
+
+    fun dismissClearModal() {
+        showClearConfirmationModal = false
+    }
+
     fun show() {
         isVisible = true
+        showClearConfirmationModal = false
     }
 
     fun hide() {
         isVisible = false
+        showClearConfirmationModal = false
         listener?.onCloseKeyboard()
     }
 }

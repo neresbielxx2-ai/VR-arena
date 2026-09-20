@@ -16,10 +16,8 @@ import com.lunarvr.browser.BrowserTouchElement
 import com.lunarvr.browser.BrowserView
 import com.lunarvr.browser.URLBar
 import com.lunarvr.environment.EnvironmentBackdrop
-import com.lunarvr.environment.CustomModelManager
 import com.lunarvr.system.ConfigManager
 import com.lunarvr.environment.EnvironmentManager
-import com.lunarvr.ui.EnvViewMode
 import com.lunarvr.handtracking.InteractionManager
 import com.lunarvr.handtracking.Ray3D
 import com.lunarvr.keyboard.TextInputManager
@@ -75,7 +73,6 @@ class VRRenderer(
             configManager = configManager,
             onResetToDefaults = {
                 environmentManager.setEnvironment(com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW)
-                customModelManager.clearCustomModel()
                 interactionManager.userDwellTimeMs = 2000L
                 currentDestination = null
                 refreshInteractiveElements()
@@ -92,24 +89,14 @@ class VRRenderer(
         )
     }
 
-    val customModelManager = CustomModelManager(context, configManager)
     val environmentPanel = EnvironmentPanel(
         envManager = environmentManager,
-        customModelManager = customModelManager,
         onEnvironmentChanged = {
             refreshInteractiveElements()
         },
         onCloseEnvironment = {
             currentDestination = null
             refreshInteractiveElements()
-        },
-        onRequestNativeFilePicker = {
-            requestNativeModelPicker()
-        },
-        onOpenKeyboardForPosition = { axis, currentVal, onSubmitted ->
-            openKeyboardForWebInput(currentVal) { input ->
-                onSubmitted(input)
-            }
         }
     )
 
@@ -191,12 +178,12 @@ class VRRenderer(
     private var keyboardVRPanel: VRPanel? = null
     private var homeVRPanel: VRPanel? = null
 
-    // Meta Quest style App Window Drag Handles: independent move handle under EACH open app window!
-    private var browserGrabHandle = GrabHandle("grab_browser", 0.0f, -0.36f, -1.35f, 0.42f, 0.06f)
-    private var settingsGrabHandle = GrabHandle("grab_settings", 0.0f, -0.38f, -1.30f, 0.42f, 0.06f)
-    private var envGrabHandle = GrabHandle("grab_env", 0.0f, -0.38f, -1.30f, 0.42f, 0.06f)
-    private var keyboardGrabHandle = GrabHandle("grab_keyboard", 0.0f, -0.34f, -1.25f, 0.42f, 0.06f)
-    private var homeGrabHandle = GrabHandle("grab_home", 0.0f, -0.36f, -1.35f, 0.42f, 0.06f)
+    // Meta Quest / VisionOS style App Window Drag Handles: enlarged ergonomic grab pills
+    private var browserGrabHandle = GrabHandle("grab_browser", 0.0f, -0.40f, -1.35f, 0.60f, 0.085f)
+    private var settingsGrabHandle = GrabHandle("grab_settings", 0.0f, -0.42f, -1.30f, 0.58f, 0.085f)
+    private var envGrabHandle = GrabHandle("grab_env", 0.0f, -0.42f, -1.30f, 0.58f, 0.085f)
+    private var keyboardGrabHandle = GrabHandle("grab_keyboard", 0.0f, -0.38f, -1.25f, 0.56f, 0.085f)
+    private var homeGrabHandle = GrabHandle("grab_home", 0.0f, -0.40f, -1.35f, 0.60f, 0.085f)
 
     // Spherical window coordinates (free 360 rotation around user, height up/down, no walls!)
     private var browserYawDeg: Float = 0f
@@ -253,12 +240,10 @@ class VRRenderer(
             if (configManager.economicMode) {
                 vrSession.performanceManager.applyLevel(com.lunarvr.system.PerformanceLevel.ECONOMIC)
             }
-            if (!configManager.isCustomModelActive) {
-                try {
-                    val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
-                    environmentManager.setEnvironment(savedEnv)
-                } catch (_: Exception) {}
-            }
+            try {
+                val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
+                environmentManager.setEnvironment(savedEnv)
+            } catch (_: Exception) {}
 
             val clear = environmentManager.getClearColor()
             GLES20.glClearColor(clear[0], clear[1], clear[2], clear[3])
@@ -399,6 +384,10 @@ class VRRenderer(
                 override fun onBackspace() {
                     textInputManager.backspace()
                 }
+                override fun onClearAll() {
+                    textInputManager.clearAll()
+                    showNotification("Texto limpo!")
+                }
                 override fun onSpace() {
                     textInputManager.appendSpace()
                 }
@@ -526,26 +515,7 @@ class VRRenderer(
         }
     }
 
-    var onModelImportRequested: (() -> Unit)? = null
 
-    fun requestNativeModelPicker() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            onModelImportRequested?.invoke()
-        }
-    }
-
-    fun handleModelImported(uri: android.net.Uri, displayName: String?) {
-        val imported = customModelManager.importModelFromUri(uri, displayName)
-        if (imported != null) {
-            environmentPanel.selectedFile = imported.file
-            environmentPanel.viewMode = com.lunarvr.ui.EnvViewMode.CAMERA_POS_CONFIG
-            environmentPanel.setupButtons()
-            refreshInteractiveElements()
-            showNotification("Modelo importado! Escolha a posição da câmera.")
-        } else {
-            showNotification("Erro ao importar modelo 3D.")
-        }
-    }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         screenWidth = if (width > 0) width else 1920
@@ -568,12 +538,10 @@ class VRRenderer(
             if (configManager.economicMode) {
                 vrSession.performanceManager.applyLevel(com.lunarvr.system.PerformanceLevel.ECONOMIC)
             }
-            if (!configManager.isCustomModelActive) {
-                try {
-                    val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
-                    environmentManager.setEnvironment(savedEnv)
-                } catch (_: Exception) {}
-            }
+            try {
+                val savedEnv = com.lunarvr.environment.VREnvironmentType.valueOf(configManager.activeEnvironmentName)
+                environmentManager.setEnvironment(savedEnv)
+            } catch (_: Exception) {}
 
             val clear = environmentManager.getClearColor()
             GLES20.glClearColor(clear[0], clear[1], clear[2], clear[3])
@@ -715,13 +683,9 @@ class VRRenderer(
         // Draw Panels in World space
         GLES20.glUseProgram(panelProgram)
 
-        // Draw Scenic Environment 3D Backdrop (or custom 3D model if active)
-        if (customModelManager.isCustomModelActive && customModelManager.activeCustomModel != null) {
-            drawCustom3DModel(vpMatrix)
-        } else {
-            val curBackdrop = backdrops[environmentManager.currentEnvironment]
-            curBackdrop?.panel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
-        }
+        // Draw Scenic Environment 3D Backdrop
+        val curBackdrop = backdrops[environmentManager.currentEnvironment]
+        curBackdrop?.panel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
 
         // Floating Lunar Bar
         barPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
@@ -844,53 +808,7 @@ class VRRenderer(
         reticleProgram = createProgram(vs, fs)
     }
 
-    private fun drawCustom3DModel(vpMatrix: FloatArray) {
-        val mesh = customModelManager.activeCustomModel ?: return
-        if (starProgram == 0) return
 
-        // Save OpenGL state and render custom 3D model
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
-        GLES20.glDepthFunc(GLES20.GL_LEQUAL)
-        GLES20.glDepthMask(true)
-
-        GLES20.glUseProgram(starProgram)
-        val mvp = GLES20.glGetUniformLocation(starProgram, "uMVPMatrix")
-        val color = GLES20.glGetUniformLocation(starProgram, "vColor")
-        val pos = GLES20.glGetAttribLocation(starProgram, "vPosition")
-
-        val modelMatrix = FloatArray(16)
-        val finalMvp = FloatArray(16)
-        android.opengl.Matrix.setIdentityM(modelMatrix, 0)
-
-        // Scale model to a comfortable backdrop radius if huge or tiny
-        val spanX = Math.abs(mesh.maxX - mesh.minX)
-        val spanY = Math.abs(mesh.maxY - mesh.minY)
-        val spanZ = Math.abs(mesh.maxZ - mesh.minZ)
-        val maxSpan = Math.max(spanX, Math.max(spanY, spanZ))
-        val scaleFactor = if (maxSpan > 0.001f && maxSpan > 50f) 50f / maxSpan else if (maxSpan < 0.5f && maxSpan > 0.0001f) 10f / maxSpan else 1.0f
-
-        android.opengl.Matrix.scaleM(modelMatrix, 0, scaleFactor, scaleFactor, scaleFactor)
-        android.opengl.Matrix.translateM(
-            modelMatrix, 0,
-            -customModelManager.cameraOffset.posX,
-            -customModelManager.cameraOffset.posY,
-            -customModelManager.cameraOffset.posZ
-        )
-        android.opengl.Matrix.multiplyMM(finalMvp, 0, vpMatrix, 0, modelMatrix, 0)
-
-        GLES20.glUniformMatrix4fv(mvp, 1, false, finalMvp, 0)
-        GLES20.glUniform4f(color, 0.35f, 0.75f, 0.95f, 0.90f)
-
-        mesh.vertexBuffer.position(0)
-        GLES20.glEnableVertexAttribArray(pos)
-        GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 3 * 4, mesh.vertexBuffer)
-
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, mesh.vertexCount)
-        GLES20.glDisableVertexAttribArray(pos)
-
-        // Clear depth so user interface panels (LunarBar, Browser, Menus) are never clipped or hidden
-        GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
-    }
 
     private fun drawStarfield(vpMatrix: FloatArray) {
         val sBuf = starBuffer ?: return
@@ -1056,21 +974,60 @@ class VRRenderer(
 
     private fun setupKeyboardButtons(centerX: Float = 0f, centerY: Float = -0.05f, centerZ: Float = -1.25f) {
         keyboardButtons.clear()
+
+        // Close Keyboard button (top-right '✕ Fechar')
+        keyboardButtons.add(
+            VRKey("btn_close_keyboard", "✕", centerX + 0.44f, centerY + 0.21f, centerZ, 0.09f, 0.055f) {
+                vrKeyboard.hide()
+                refreshInteractiveElements()
+            }
+        )
+
+        if (vrKeyboard.showClearConfirmationModal) {
+            // Safety confirmation prompt buttons: [ Limpar Tudo ]  [ Cancelar ]
+            val modalY = centerY - 0.02f
+            keyboardButtons.add(
+                VRKey("btn_confirm_clear_all", "Limpar Tudo", centerX - 0.18f, modalY, centerZ, 0.30f, 0.08f) {
+                    vrKeyboard.confirmClearAll()
+                    setupKeyboardButtons(centerX, centerY, centerZ)
+                    refreshInteractiveElements()
+                }
+            )
+            keyboardButtons.add(
+                VRKey("btn_cancel_clear_all", "Cancelar", centerX + 0.18f, modalY, centerZ, 0.30f, 0.08f) {
+                    vrKeyboard.dismissClearModal()
+                    setupKeyboardButtons(centerX, centerY, centerZ)
+                    refreshInteractiveElements()
+                }
+            )
+            return
+        }
+
         val rows = vrKeyboard.getCurrentRows()
-        val startY = centerY + 0.16f
-        val btnH = 0.065f
+        val startY = centerY + 0.13f
+        val btnH = 0.062f
 
         for (r in rows.indices) {
             val row = rows[r]
             val btnW = 0.94f / row.size
             val startX = centerX - 0.47f + (btnW / 2.0f)
-            val y = startY - (r * 0.075f)
+            val y = startY - (r * 0.072f)
 
             for (c in row.indices) {
                 val key = row[c]
                 val x = startX + (c * btnW)
+
+                val onLongDwellAction: (() -> Unit)? = if (key == "DEL") {
+                    {
+                        // Holding / long dwell on DEL opens safety confirmation prompt!
+                        vrKeyboard.requestClearAllPrompt()
+                        setupKeyboardButtons(centerX, centerY, centerZ)
+                        refreshInteractiveElements()
+                    }
+                } else null
+
                 keyboardButtons.add(
-                    VRKey("key_${key}_$r", key, x, y, centerZ, btnW * 0.92f, btnH) {
+                    VRKey("key_${key}_$r", key, x, y, centerZ, btnW * 0.92f, btnH, onLongDwellAction) {
                         vrKeyboard.handleKeyPress(key)
                         if (key in listOf("SHIFT", "shift", "?123", "ABC")) {
                             setupKeyboardButtons(centerX, centerY, centerZ)
@@ -1090,26 +1047,32 @@ class VRRenderer(
             val theme = lunarBar.currentColorTheme
             val style = lunarBar.currentStyle
 
+            val pillCorner = when (style) {
+                BarStyle.META_QUEST -> 52f // Ultra-smooth rounded Meta Quest 3S aesthetic
+                BarStyle.LUNAR_COSMIC -> 32f // Angular cosmic aesthetic
+                BarStyle.MINIMAL_CYBER -> 14f // Sharp cybernetic aesthetic
+            }
+            val shellRect = RectF(14f, 14f, 1010f, 206f)
+
+            // Outer Soft Ambient Glow for Enterprise VR Polish
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 6f
+            paint.color = Color.parseColor("#226366F1")
+            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 210f), pillCorner + 2f, pillCorner + 2f, paint)
+
             // Custom Shell according to chosen Style & Theme
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor(theme.bgHex)
-
-            val pillCorner = when (style) {
-                BarStyle.META_QUEST -> 50f // Ultra-smooth rounded Meta Quest 3S aesthetic
-                BarStyle.LUNAR_COSMIC -> 32f // Angular cosmic aesthetic
-                BarStyle.MINIMAL_CYBER -> 12f // Sharp cybernetic aesthetic
-            }
-            val shellRect = RectF(14f, 14f, 1010f, 206f)
             canvas.drawRoundRect(shellRect, pillCorner, pillCorner, paint)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = if (style == BarStyle.META_QUEST) 2.0f else 2.8f
+            paint.strokeWidth = if (style == BarStyle.META_QUEST) 2.2f else 2.8f
             paint.color = Color.parseColor(theme.borderHex)
             canvas.drawRoundRect(shellRect, pillCorner, pillCorner, paint)
 
             // Header status line: Title, Status, Battery Icon, Time
             paint.style = Paint.Style.FILL
-            paint.textSize = 23f
+            paint.textSize = 22f
             paint.color = Color.parseColor("#94A3B8")
             val statusTxt = if (notificationMessage != null && System.currentTimeMillis() < notificationEndTime) {
                 "✨ ${notificationMessage}"
@@ -1117,17 +1080,17 @@ class VRRenderer(
                 "LUNAR OS  |  ${lunarBar.vrStatus}  •  ${style.displayName}"
             }
             canvas.drawText(statusTxt, 36f, 46f, paint)
-            canvas.drawText(lunarBar.currentTimeString, 910f, 46f, paint)
+            canvas.drawText(lunarBar.currentTimeString, 915f, 46f, paint)
 
             // Clean vector battery indicator
-            ModernIcons.drawBatteryIcon(canvas, paint, 790f, 40f, lunarBar.batteryPercentage)
+            ModernIcons.drawBatteryIcon(canvas, paint, 800f, 40f, lunarBar.batteryPercentage)
 
             // Buttons: 5 actions (Início, Navegador, Cenários, Centralizar, Ajustes)
             val btnW = 186f
             val btnH = 120f
             val by = 68f
 
-            // Sleek color accents per category (Emerald, Purple, Rose, Violet, Cyan)
+            // Sleek color accents per category (Emerald, Indigo, Rose, Violet, Cyan)
             val accentColors = listOf(
                 Pair("#10B981", "#064E3B"), // Home: Emerald Green
                 Pair("#6366F1", "#312E81"), // Browser: Cosmic Indigo
@@ -1145,7 +1108,7 @@ class VRRenderer(
                 val cardCorner = when (style) {
                     BarStyle.META_QUEST -> 30f // Meta Quest rounded card pill
                     BarStyle.LUNAR_COSMIC -> 20f
-                    BarStyle.MINIMAL_CYBER -> 8f
+                    BarStyle.MINIMAL_CYBER -> 10f
                 }
 
                 // Rounded rect card
@@ -1191,9 +1154,9 @@ class VRRenderer(
                 canvas.drawText(btn.label, bx + (btnW - textW) / 2f, by + 100f, paint)
             }
 
-            // Drag Handle Bar (2 seconds lock)
+            // Enlarged ergonomic Drag Handle Bar (2 seconds lock)
             val grab = lunarBar.grabHandle
-            ModernIcons.drawDragHandle(canvas, paint, 512f, 230f, 280f, 22f, grab.isHovered, grab.isGrabbed, grab.hoverProgress)
+            ModernIcons.drawDragHandle(canvas, paint, 512f, 230f, 380f, 28f, grab.isHovered, grab.isGrabbed, grab.hoverProgress)
         }
     }
 
@@ -1453,7 +1416,7 @@ class VRRenderer(
 
             // Bottom drag handle
             ModernIcons.drawDragHandle(
-                canvas, paint, 640f, 742f, 300f, 20f,
+                canvas, paint, 640f, 742f, 380f, 28f,
                 homeGrabHandle.isHovered, homeGrabHandle.isGrabbed, homeGrabHandle.hoverProgress
             )
         }
@@ -1524,199 +1487,78 @@ class VRRenderer(
         envVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Background panel
+            // Outer Curved Glass Window shell (Meta Quest / VisionOS style dark acrylic glass)
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#F50D1322")
             canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 3f
+            paint.strokeWidth = 2.5f
             paint.color = Color.parseColor("#38BDF8")
             canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
 
-            when (environmentPanel.viewMode) {
-                EnvViewMode.MAIN_LIST -> {
-                    // Top-left Close Button '✕'
-                    val closeEnvBtn = environmentPanel.buttons.find { it.id == "btn_close_env_top_left" }
-                    ModernIcons.drawCloseButton(canvas, paint, 48f, 65f, 20f, closeEnvBtn?.isHovered == true)
+            // Top-left Close Button '✕'
+            val closeEnvBtn = environmentPanel.buttons.find { it.id == "btn_close_env_top_left" }
+            ModernIcons.drawCloseButton(canvas, paint, 48f, 65f, 20f, closeEnvBtn?.isHovered == true)
 
-                    // Header Icon and Title
-                    ModernIcons.drawEnvironmentIcon(canvas, paint, 92f, 65f, 30f, Color.parseColor("#00E5FF"))
+            // Header Icon and Title
+            ModernIcons.drawEnvironmentIcon(canvas, paint, 92f, 65f, 30f, Color.parseColor("#00E5FF"))
 
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 32f
-                    paint.color = Color.parseColor("#00E5FF")
-                    canvas.drawText("CENÁRIOS VIRTUAIS VR", 125f, 75f, paint)
+            paint.style = Paint.Style.FILL
+            paint.textSize = 32f
+            paint.color = Color.parseColor("#00E5FF")
+            canvas.drawText("CENÁRIOS VIRTUAIS VR", 125f, 75f, paint)
 
-                    // Description
-                    paint.textSize = 24f
-                    paint.color = Color.parseColor("#94A3B8")
-                    val descText = if (customModelManager.isCustomModelActive) {
-                        "Modelo 3D Personalizado Ativo: ${customModelManager.activeModelName}"
-                    } else {
-                        "Escolha o tema imersivo do seu ambiente espacial ou importe um 3D:"
-                    }
-                    canvas.drawText(descText, 50f, 130f, paint)
+            // Description
+            paint.textSize = 24f
+            paint.color = Color.parseColor("#94A3B8")
+            canvas.drawText("Escolha o tema imersivo do seu ambiente espacial:", 50f, 130f, paint)
 
-                    // Environment cards
-                    val envs = com.lunarvr.environment.VREnvironmentType.values()
-                    for (i in envs.indices) {
-                        val env = envs[i]
-                        val col = i % 2
-                        val row = i / 2
-                        val bx = 50f + col * 480f
-                        val by = 160f + row * 150f
-                        val bw = 440f
-                        val bh = 125f
+            // Environment cards (4 high-quality spatial themes)
+            val envs = com.lunarvr.environment.VREnvironmentType.values()
+            for (i in envs.indices) {
+                val env = envs[i]
+                val col = i % 2
+                val row = i / 2
+                val bx = 50f + col * 480f
+                val by = 165f + row * 195f
+                val bw = 440f
+                val bh = 165f
 
-                        val isCurrent = !customModelManager.isCustomModelActive && (env == environmentManager.currentEnvironment)
+                val isCurrent = (env == environmentManager.currentEnvironment)
 
-                        val cardTheme = when (env) {
-                            com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW -> Pair("#1E3A8A", "#38BDF8")
-                            com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
-                            com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
-                            com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
-                        }
-
-                        paint.style = Paint.Style.FILL
-                        paint.color = if (isCurrent) Color.parseColor(cardTheme.first) else Color.parseColor("#151D2A")
-                        canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
-
-                        paint.style = Paint.Style.STROKE
-                        paint.strokeWidth = if (isCurrent) 3.5f else 1.8f
-                        paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#334155")
-                        canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 20f, 20f, paint)
-
-                        // Title
-                        paint.style = Paint.Style.FILL
-                        paint.textSize = 26f
-                        paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#F8FAFC")
-                        val activeTag = if (isCurrent) " (Ativo)" else ""
-                        canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 46f, paint)
-
-                        // Subtitle
-                        paint.textSize = 19f
-                        paint.color = Color.parseColor("#94A3B8")
-                        canvas.drawText(env.description, bx + 24f, by + 86f, paint)
-                    }
-
-                    // Bottom bar for "+" Import 3D button
-                    val addBtnRect = RectF(50f, 490f, 680f, 580f)
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.parseColor("#1E293B")
-                    canvas.drawRoundRect(addBtnRect, 18f, 18f, paint)
-
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.5f
-                    paint.color = Color.parseColor("#10B981")
-                    canvas.drawRoundRect(addBtnRect, 18f, 18f, paint)
-
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 26f
-                    paint.color = Color.parseColor("#10B981")
-                    canvas.drawText("➕ Importar Cenário 3D (.glb / .obj / .gltf)", 75f, 545f, paint)
+                val cardTheme = when (env) {
+                    com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW -> Pair("#1E3A8A", "#38BDF8")
+                    com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
+                    com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
+                    com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
                 }
 
+                paint.style = Paint.Style.FILL
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.first) else Color.parseColor("#151D2A")
+                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
 
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = if (isCurrent) 3.5f else 1.8f
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#334155")
+                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
 
-                EnvViewMode.CAMERA_POS_CONFIG -> {
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 32f
-                    paint.color = Color.parseColor("#00E5FF")
-                    canvas.drawText("POSIÇÃO DA CÂMERA NO CENÁRIO", 60f, 75f, paint)
+                // Title
+                paint.style = Paint.Style.FILL
+                paint.textSize = 28f
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#F8FAFC")
+                val activeTag = if (isCurrent) "  ✓ Ativo" else ""
+                canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 52f, paint)
 
-                    paint.textSize = 22f
-                    paint.color = Color.parseColor("#94A3B8")
-                    canvas.drawText("Modelo: ${environmentPanel.selectedFile?.name ?: "Modelo 3D"}", 60f, 115f, paint)
-                    canvas.drawText("Digite as coordenadas (X, Y, Z) ou use o botão ao lado para o VR calibrar:", 60f, 145f, paint)
-
-                    // 3 Input boxes representation
-                    val boxW = 280f
-                    val boxH = 85f
-                    val yBox = 190f
-
-                    // X Box
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.parseColor("#1E293B")
-                    canvas.drawRoundRect(RectF(60f, yBox, 60f + boxW, yBox + boxH), 16f, 16f, paint)
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.5f
-                    paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawRoundRect(RectF(60f, yBox, 60f + boxW, yBox + boxH), 16f, 16f, paint)
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 26f
-                    paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawText("Eixo X: ${environmentPanel.inputPosX}", 90f, yBox + 52f, paint)
-
-                    // Y Box
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.parseColor("#1E293B")
-                    canvas.drawRoundRect(RectF(370f, yBox, 370f + boxW, yBox + boxH), 16f, 16f, paint)
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.5f
-                    paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawRoundRect(RectF(370f, yBox, 370f + boxW, yBox + boxH), 16f, 16f, paint)
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 26f
-                    paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawText("Eixo Y: ${environmentPanel.inputPosY}", 400f, yBox + 52f, paint)
-
-                    // Z Box
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.parseColor("#1E293B")
-                    canvas.drawRoundRect(RectF(680f, yBox, 680f + boxW, yBox + boxH), 16f, 16f, paint)
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.5f
-                    paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawRoundRect(RectF(680f, yBox, 680f + boxW, yBox + boxH), 16f, 16f, paint)
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 26f
-                    paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawText("Eixo Z: ${environmentPanel.inputPosZ}", 710f, yBox + 52f, paint)
-
-                    // Hint text
-                    paint.textSize = 20f
-                    paint.color = Color.parseColor("#94A3B8")
-                    canvas.drawText("Toque em uma caixa para abrir o teclado virtual.", 60f, 310f, paint)
-
-                    // Representation of the two action buttons side by side
-                    val btnY = 340f
-                    val btnWAct = 430f
-                    val btnHAct = 90f
-
-                    // Confirm button representation
-                    val confirmRect = RectF(60f, btnY, 60f + btnWAct, btnY + btnHAct)
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.parseColor("#1E3A8A")
-                    canvas.drawRoundRect(confirmRect, 20f, 20f, paint)
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.5f
-                    paint.color = Color.parseColor("#38BDF8")
-                    canvas.drawRoundRect(confirmRect, 20f, 20f, paint)
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 26f
-                    paint.color = Color.parseColor("#F8FAFC")
-                    canvas.drawText("💾 Confirmar Posições", 100f, btnY + 54f, paint)
-
-                    // Skip (Auto) button right next to Confirm
-                    val skipRect = RectF(530f, btnY, 530f + btnWAct, btnY + btnHAct)
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.parseColor("#064E3B")
-                    canvas.drawRoundRect(skipRect, 20f, 20f, paint)
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.5f
-                    paint.color = Color.parseColor("#10B981")
-                    canvas.drawRoundRect(skipRect, 20f, 20f, paint)
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = 26f
-                    paint.color = Color.parseColor("#F8FAFC")
-                    canvas.drawText("⚡ Pular (VR Escolhe)", 570f, btnY + 54f, paint)
-                }
+                // Subtitle
+                paint.textSize = 20f
+                paint.color = Color.parseColor("#94A3B8")
+                canvas.drawText(env.description, bx + 24f, by + 100f, paint)
             }
 
             // Drag handle at bottom
             ModernIcons.drawDragHandle(
-                canvas, paint, 512f, 644f, 260f, 20f,
+                canvas, paint, 512f, 665f, 380f, 28f,
                 envGrabHandle.isHovered, envGrabHandle.isGrabbed, envGrabHandle.hoverProgress
             )
         }
@@ -1793,7 +1635,7 @@ class VRRenderer(
 
             // Drag handle at the bottom of settings panel
             ModernIcons.drawDragHandle(
-                canvas, paint, 512f, 744f, 260f, 20f,
+                canvas, paint, 512f, 744f, 380f, 28f,
                 settingsGrabHandle.isHovered, settingsGrabHandle.isGrabbed, settingsGrabHandle.hoverProgress
             )
         }
@@ -1803,102 +1645,205 @@ class VRRenderer(
         keyboardVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Meta Quest OS virtual keyboard glass container with sleek Purple/Indigo accents
+            val mainRect = RectF(10f, 10f, 1014f, 502f)
+
+            // Outer soft glow for Enterprise VR look
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 5f
+            paint.color = Color.parseColor("#226366F1")
+            canvas.drawRoundRect(RectF(8f, 8f, 1016f, 504f), 34f, 34f, paint)
+
+            // Frosted dark glass container (Meta Quest / VisionOS enterprise style)
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F5101424")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 502f), 32f, 32f, paint)
+            paint.color = Color.parseColor("#F50D111D")
+            canvas.drawRoundRect(mainRect, 32f, 32f, paint)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#6366F1")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 502f), 32f, 32f, paint)
+            paint.strokeWidth = 2.2f
+            paint.color = Color.parseColor("#4F46E5")
+            canvas.drawRoundRect(mainRect, 32f, 32f, paint)
 
             // Live Text Input Bar
+            val textBarRect = RectF(28f, 24f, 850f, 86f)
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#1B2236")
-            canvas.drawRoundRect(RectF(30f, 25f, 994f, 85f), 16f, 16f, paint)
+            paint.color = Color.parseColor("#151D2E")
+            canvas.drawRoundRect(textBarRect, 18f, 18f, paint)
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1.8f
-            paint.color = Color.parseColor("#818CF8")
-            canvas.drawRoundRect(RectF(30f, 25f, 994f, 85f), 16f, 16f, paint)
+            paint.color = Color.parseColor("#6366F1")
+            canvas.drawRoundRect(textBarRect, 18f, 18f, paint)
 
             paint.style = Paint.Style.FILL
-            paint.textSize = 30f
-            paint.color = Color.parseColor("#F472B6") // Soft Rose prompt
-            canvas.drawText("Digitar: ", 50f, 65f, paint)
+            paint.textSize = 28f
+            paint.color = Color.parseColor("#A5B4FC")
+            canvas.drawText("Texto: ", 46f, 63f, paint)
 
             paint.color = Color.parseColor("#F8FAFC")
-            canvas.drawText("${textInputManager.getCurrentText()}_", 175f, 65f, paint)
+            val curText = textInputManager.getCurrentText()
+            val textDisplay = if (curText.length > 38) "..." + curText.takeLast(38) else curText
+            canvas.drawText("${textDisplay}_", 145f, 63f, paint)
 
-            // Close button top-right (Coral/Red accent)
-            paint.color = Color.parseColor("#FB7185")
-            paint.textSize = 24f
-            canvas.drawText("✕ Fechar", 880f, 65f, paint)
+            // Close button top-right ('✕ Fechar')
+            val closeBtn = keyboardButtons.find { it.id == "btn_close_keyboard" }
+            val closeRect = RectF(868f, 24f, 996f, 86f)
+            paint.style = Paint.Style.FILL
+            paint.color = if (closeBtn?.isHovered == true) Color.parseColor("#991B1B") else Color.parseColor("#1E293B")
+            canvas.drawRoundRect(closeRect, 18f, 18f, paint)
 
-            // Draw virtual keys (Dwell click according to user setting)
-            val rows = vrKeyboard.getCurrentRows()
-            var startKeyY = 105f
-            var keyIdx = 0
-            for (r in rows.indices) {
-                val row = rows[r]
-                val kw = 940f / row.size
-                val kh = 68f
-                for (c in row.indices) {
-                    val keyChar = row[c]
-                    val kx = 42f + c * kw
-                    val ky = startKeyY
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.8f
+            paint.color = if (closeBtn?.isHovered == true) Color.parseColor("#EF4444") else Color.parseColor("#475569")
+            canvas.drawRoundRect(closeRect, 18f, 18f, paint)
 
-                    val btn = keyboardButtons.getOrNull(keyIdx)
-                    val isHovered = btn?.isHovered == true
+            paint.style = Paint.Style.FILL
+            paint.textSize = 22f
+            paint.color = if (closeBtn?.isHovered == true) Color.WHITE else Color.parseColor("#CBD5E1")
+            val ctw = paint.measureText("✕ Fechar")
+            canvas.drawText("✕ Fechar", closeRect.centerX() - ctw / 2f, 61f, paint)
 
-                    val isSpecial = keyChar in listOf("ENTER", "SPACE", "SHIFT", "shift", "?123", "ABC", "DEL")
+            if (vrKeyboard.showClearConfirmationModal) {
+                // Dim overlay for safety confirmation dialog
+                paint.style = Paint.Style.FILL
+                paint.color = Color.parseColor("#CC0B0F19")
+                canvas.drawRoundRect(RectF(40f, 100f, 984f, 440f), 24f, 24f, paint)
 
-                    // Key background with richer palette
-                    paint.style = Paint.Style.FILL
-                    paint.color = when {
-                        keyChar == "ENTER" -> if (isHovered) Color.parseColor("#059669") else Color.parseColor("#047857")
-                        keyChar == "DEL" -> if (isHovered) Color.parseColor("#E11D48") else Color.parseColor("#BE123C")
-                        isSpecial -> if (isHovered) Color.parseColor("#4338CA") else Color.parseColor("#312E81")
-                        isHovered -> Color.parseColor("#334155")
-                        else -> Color.parseColor("#1E293B")
-                    }
-                    canvas.drawRoundRect(RectF(kx + 4f, ky + 4f, kx + kw - 4f, ky + kh - 4f), 14f, 14f, paint)
+                // Dialog Card
+                val dialogRect = RectF(160f, 140f, 864f, 400f)
+                paint.color = Color.parseColor("#1E1B4B")
+                canvas.drawRoundRect(dialogRect, 24f, 24f, paint)
 
-                    // Key border
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = if (isHovered) 3.5f else 1.5f
-                    paint.color = when {
-                        keyChar == "ENTER" -> Color.parseColor("#10B981")
-                        keyChar == "DEL" -> Color.parseColor("#F43F5E")
-                        isHovered -> Color.parseColor("#A855F7")
-                        else -> Color.parseColor("#334155")
-                    }
-                    canvas.drawRoundRect(RectF(kx + 4f, ky + 4f, kx + kw - 4f, ky + kh - 4f), 14f, 14f, paint)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                paint.color = Color.parseColor("#818CF8")
+                canvas.drawRoundRect(dialogRect, 24f, 24f, paint)
 
-                    // Dwell progress bar inside key (radiant violet/emerald)
-                    if (isHovered && btn != null && btn.hoverProgress > 0f) {
-                        paint.color = if (keyChar == "ENTER") Color.parseColor("#34D399") else Color.parseColor("#C084FC")
-                        paint.strokeWidth = 6f
-                        val progW = (kw - 16f) * btn.hoverProgress
-                        canvas.drawLine(kx + 8f, ky + kh - 6f, kx + 8f + progW, ky + kh - 6f, paint)
-                    }
+                paint.style = Paint.Style.FILL
+                paint.textSize = 30f
+                paint.color = Color.parseColor("#F8FAFC")
+                val alertTw = paint.measureText("⚠️ Deseja apagar todo o texto digitado?")
+                canvas.drawText("⚠️ Deseja apagar todo o texto digitado?", dialogRect.centerX() - alertTw / 2f, 205f, paint)
 
-                    // Key Text
-                    paint.style = Paint.Style.FILL
-                    paint.textSize = if (keyChar.length > 2) 22f else 28f
-                    paint.color = if (isHovered) Color.parseColor("#FFFFFF") else Color.parseColor("#F1F5F9")
-                    val tw = paint.measureText(keyChar)
-                    canvas.drawText(keyChar, kx + (kw - tw) / 2f, ky + kh / 2f + 9f, paint)
+                paint.textSize = 20f
+                paint.color = Color.parseColor("#94A3B8")
+                val subTw = paint.measureText("Você segurou o botão DEL. Escolha uma ação:")
+                canvas.drawText("Você segurou o botão DEL. Escolha uma ação:", dialogRect.centerX() - subTw / 2f, 245f, paint)
 
-                    keyIdx++
+                // Confirm Clear Button
+                val confirmBtn = keyboardButtons.find { it.id == "btn_confirm_clear_all" }
+                val confRect = RectF(200f, 280f, 490f, 365f)
+                paint.style = Paint.Style.FILL
+                paint.color = if (confirmBtn?.isHovered == true) Color.parseColor("#DC2626") else Color.parseColor("#991B1B")
+                canvas.drawRoundRect(confRect, 18f, 18f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2.5f
+                paint.color = Color.parseColor("#EF4444")
+                canvas.drawRoundRect(confRect, 18f, 18f, paint)
+
+                if (confirmBtn?.isHovered == true && confirmBtn.hoverProgress > 0f) {
+                    paint.color = Color.parseColor("#FCA5A5")
+                    paint.strokeWidth = 6f
+                    val progW = (confRect.width() - 20f) * confirmBtn.hoverProgress
+                    canvas.drawLine(confRect.left + 10f, confRect.bottom - 6f, confRect.left + 10f + progW, confRect.bottom - 6f, paint)
                 }
-                startKeyY += 76f
+
+                paint.style = Paint.Style.FILL
+                paint.textSize = 24f
+                paint.color = Color.WHITE
+                val cfTw = paint.measureText("🗑️ Limpar Tudo")
+                canvas.drawText("🗑️ Limpar Tudo", confRect.centerX() - cfTw / 2f, 332f, paint)
+
+                // Cancel Button
+                val cancelBtn = keyboardButtons.find { it.id == "btn_cancel_clear_all" }
+                val canRect = RectF(534f, 280f, 824f, 365f)
+                paint.style = Paint.Style.FILL
+                paint.color = if (cancelBtn?.isHovered == true) Color.parseColor("#334155") else Color.parseColor("#1E293B")
+                canvas.drawRoundRect(canRect, 18f, 18f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2.5f
+                paint.color = Color.parseColor("#64748B")
+                canvas.drawRoundRect(canRect, 18f, 18f, paint)
+
+                if (cancelBtn?.isHovered == true && cancelBtn.hoverProgress > 0f) {
+                    paint.color = Color.parseColor("#38BDF8")
+                    paint.strokeWidth = 6f
+                    val progW = (canRect.width() - 20f) * cancelBtn.hoverProgress
+                    canvas.drawLine(canRect.left + 10f, canRect.bottom - 6f, canRect.left + 10f + progW, canRect.bottom - 6f, paint)
+                }
+
+                paint.style = Paint.Style.FILL
+                paint.textSize = 24f
+                paint.color = Color.parseColor("#E2E8F0")
+                val canTw = paint.measureText("Cancelar")
+                canvas.drawText("Cancelar", canRect.centerX() - canTw / 2f, 332f, paint)
+
+            } else {
+                // Draw virtual keys (Enterprise polished key caps)
+                val rows = vrKeyboard.getCurrentRows()
+                var startKeyY = 105f
+                var keyIdx = 1 // 0 is btn_close_keyboard
+                for (r in rows.indices) {
+                    val row = rows[r]
+                    val kw = 940f / row.size
+                    val kh = 66f
+                    for (c in row.indices) {
+                        val keyChar = row[c]
+                        val kx = 42f + c * kw
+                        val ky = startKeyY
+
+                        val btn = keyboardButtons.getOrNull(keyIdx)
+                        val isHovered = btn?.isHovered == true
+
+                        val isSpecial = keyChar in listOf("ENTER", "SPACE", "SHIFT", "shift", "?123", "ABC", "DEL")
+
+                        // Key background: refined gradients / colors
+                        paint.style = Paint.Style.FILL
+                        paint.color = when {
+                            keyChar == "ENTER" -> if (isHovered) Color.parseColor("#059669") else Color.parseColor("#047857")
+                            keyChar == "DEL" -> if (isHovered) Color.parseColor("#E11D48") else Color.parseColor("#9F1239")
+                            isSpecial -> if (isHovered) Color.parseColor("#4338CA") else Color.parseColor("#312E81")
+                            isHovered -> Color.parseColor("#334155")
+                            else -> Color.parseColor("#1B2436")
+                        }
+                        canvas.drawRoundRect(RectF(kx + 4f, ky + 3f, kx + kw - 4f, ky + kh - 3f), 14f, 14f, paint)
+
+                        // Key border: subtle sleek border
+                        paint.style = Paint.Style.STROKE
+                        paint.strokeWidth = if (isHovered) 3.2f else 1.5f
+                        paint.color = when {
+                            keyChar == "ENTER" -> Color.parseColor("#10B981")
+                            keyChar == "DEL" -> Color.parseColor("#F43F5E")
+                            isHovered -> Color.parseColor("#818CF8")
+                            else -> Color.parseColor("#2E3A52")
+                        }
+                        canvas.drawRoundRect(RectF(kx + 4f, ky + 3f, kx + kw - 4f, ky + kh - 3f), 14f, 14f, paint)
+
+                        // Dwell progress bar inside key (radiant emerald/violet)
+                        if (isHovered && btn != null && btn.hoverProgress > 0f) {
+                            paint.color = if (keyChar == "ENTER") Color.parseColor("#34D399") else Color.parseColor("#A78BFA")
+                            paint.strokeWidth = 6f
+                            val progW = (kw - 16f) * btn.hoverProgress
+                            canvas.drawLine(kx + 8f, ky + kh - 5f, kx + 8f + progW, ky + kh - 5f, paint)
+                        }
+
+                        // Key Text
+                        paint.style = Paint.Style.FILL
+                        paint.textSize = if (keyChar.length > 2) 21f else 27f
+                        paint.color = if (isHovered) Color.parseColor("#FFFFFF") else Color.parseColor("#F1F5F9")
+                        val tw = paint.measureText(keyChar)
+                        canvas.drawText(keyChar, kx + (kw - tw) / 2f, ky + kh / 2f + 9f, paint)
+
+                        keyIdx++
+                    }
+                    startKeyY += 73f
+                }
             }
 
-            // Bottom grab handle for keyboard
+            // Enlarged ergonomic drag handle for keyboard
             ModernIcons.drawDragHandle(
-                canvas, paint, 512f, 490f, 260f, 18f,
+                canvas, paint, 512f, 488f, 360f, 26f,
                 keyboardGrabHandle.isHovered, keyboardGrabHandle.isGrabbed, keyboardGrabHandle.hoverProgress
             )
         }

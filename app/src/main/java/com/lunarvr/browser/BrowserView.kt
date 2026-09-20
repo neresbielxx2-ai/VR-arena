@@ -110,20 +110,44 @@ class BrowserView(
                 down.recycle()
                 up.recycle()
 
-                // Execute JavaScript elementFromPoint tap and detect text input fields
+                // Execute JavaScript elementFromPoint tap and detect interactive text input fields reliably
                 val jsClick = """
                     (function() {
-                        var elem = document.elementFromPoint($px, $py);
-                        if (elem) {
-                            elem.focus();
-                            elem.click();
-                            var tag = elem.tagName ? elem.tagName.toLowerCase() : '';
-                            var type = elem.type ? elem.type.toLowerCase() : '';
-                            var isInput = (tag === 'input' && (type === 'text' || type === 'search' || type === 'url' || type === 'password' || type === 'email' || type === 'number' || type === '')) || tag === 'textarea' || elem.isContentEditable;
-                            if (isInput) {
-                                return JSON.stringify({ isText: true, val: elem.value || elem.innerText || '' });
+                        function isTextField(el) {
+                            if (!el) return false;
+                            var tag = el.tagName ? el.tagName.toLowerCase() : '';
+                            var type = el.type ? el.type.toLowerCase() : '';
+                            var role = el.getAttribute ? el.getAttribute('role') : '';
+                            if (tag === 'input') {
+                                return ['text', 'search', 'url', 'password', 'email', 'number', 'tel', ''].indexOf(type) !== -1;
                             }
+                            if (tag === 'textarea' || el.isContentEditable || role === 'textbox') {
+                                return true;
+                            }
+                            return false;
                         }
+
+                        var elem = document.elementFromPoint($px, $py);
+                        var target = elem;
+                        while (target && target !== document.body && !isTextField(target)) {
+                            target = target.parentElement;
+                        }
+                        var field = isTextField(target) ? target : (isTextField(elem) ? elem : null);
+
+                        if (field) {
+                            field.focus();
+                            try { field.click(); } catch(e){}
+                            var val = field.value !== undefined ? field.value : (field.innerText || '');
+                            return JSON.stringify({ isText: true, val: val });
+                        }
+
+                        // Also check currently focused element
+                        var active = document.activeElement;
+                        if (isTextField(active)) {
+                            var val2 = active.value !== undefined ? active.value : (active.innerText || '');
+                            return JSON.stringify({ isText: true, val: val2 });
+                        }
+
                         return JSON.stringify({ isText: false });
                     })();
                 """.trimIndent()
@@ -131,10 +155,13 @@ class BrowserView(
                 wv.evaluateJavascript(jsClick) { result ->
                     try {
                         if (result != null && result != "null") {
-                            val isText = result.contains("isText") && result.contains("true")
+                            val isText = result.contains("\"isText\":true") || result.contains("isText": true")
                             if (isText) {
+                                // Extract current value if available
+                                val valMatch = Regex(""val":\\s*"([^"]*)"").find(result)
+                                val initialVal = valMatch?.groupValues?.getOrNull(1) ?: ""
                                 mainHandler.post {
-                                    onTextInputRequested?.invoke("") { submittedText ->
+                                    onTextInputRequested?.invoke(initialVal) { submittedText ->
                                         mainHandler.post {
                                             val escaped = submittedText.replace("'", "\\'").replace("\n", " ")
                                             val insertJs = """

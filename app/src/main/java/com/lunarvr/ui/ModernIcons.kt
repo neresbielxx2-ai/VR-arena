@@ -201,7 +201,7 @@ object ModernIcons {
         paint.strokeWidth = oldWidth
     }
 
-    // Meta Quest 3S Drag Handle Pill
+    // Enterprise Meta Quest / VisionOS Drag Handle Pill
     fun drawDragHandle(canvas: Canvas, paint: Paint, cx: Float, cy: Float, width: Float, height: Float, isHovered: Boolean, isLocked: Boolean, progress: Float) {
         val oldColor = paint.color
         val oldStyle = paint.style
@@ -210,32 +210,45 @@ object ModernIcons {
         val halfH = height / 2f
         val rect = RectF(cx - halfW, cy - halfH, cx + halfW, cy + halfH)
 
+        // Subtle glow / shadow background layer when hovered or locked
+        if (isHovered || isLocked) {
+            val glowRect = RectF(cx - halfW - 6f, cy - halfH - 6f, cx + halfW + 6f, cy + halfH + 6f)
+            paint.style = Paint.Style.FILL
+            paint.color = if (isLocked) Color.parseColor("#4400E5FF") else Color.parseColor("#336366F1")
+            canvas.drawRoundRect(glowRect, halfH + 6f, halfH + 6f, paint)
+        }
+
+        // Base pill background
         paint.style = Paint.Style.FILL
         paint.color = when {
             isLocked -> Color.parseColor("#00E5FF")
-            isHovered -> Color.parseColor("#3B82F6")
-            else -> Color.parseColor("#26354D")
+            isHovered -> Color.parseColor("#38BDF8")
+            else -> Color.parseColor("#222F46")
         }
         canvas.drawRoundRect(rect, halfH, halfH, paint)
 
+        // Smooth dwell progress bar fill
         if (isHovered && progress > 0f && !isLocked) {
             val progW = (width - 8f) * progress
             val progRect = RectF(cx - halfW + 4f, cy - halfH + 3f, cx - halfW + 4f + progW, cy + halfH - 3f)
-            paint.color = Color.parseColor("#38BDF8")
+            paint.color = Color.parseColor("#67E8F9")
             canvas.drawRoundRect(progRect, halfH - 3f, halfH - 3f, paint)
         }
 
+        // Crisp border outline
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f
-        paint.color = if (isLocked) Color.parseColor("#FFFFFF") else Color.parseColor("#475569")
+        paint.strokeWidth = if (isHovered || isLocked) 2.5f else 1.8f
+        paint.color = if (isLocked) Color.parseColor("#FFFFFF") else if (isHovered) Color.parseColor("#E0F2FE") else Color.parseColor("#475569")
         canvas.drawRoundRect(rect, halfH, halfH, paint)
 
+        // Center ergonomic tactile grab lines / dots
         paint.style = Paint.Style.FILL
         paint.color = if (isLocked) Color.parseColor("#0F172A") else Color.parseColor("#CBD5E1")
-        val dotRadius = halfH * 0.35f
-        canvas.drawCircle(cx - 24f, cy, dotRadius, paint)
+        val dotRadius = halfH * 0.30f
+        val spacing = halfW * 0.22f
+        canvas.drawCircle(cx - spacing, cy, dotRadius, paint)
         canvas.drawCircle(cx, cy, dotRadius, paint)
-        canvas.drawCircle(cx + 24f, cy, dotRadius, paint)
+        canvas.drawCircle(cx + spacing, cy, dotRadius, paint)
 
         paint.color = oldColor
         paint.style = oldStyle

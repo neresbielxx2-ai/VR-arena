@@ -33,6 +33,11 @@ class TextInputManager {
         }
     }
 
+    fun clearAll() {
+        buffer.clear()
+        activeTarget?.onTextUpdated("")
+    }
+
     fun appendSpace() {
         buffer.append(" ")
         activeTarget?.onTextUpdated(buffer.toString())

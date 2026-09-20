@@ -101,10 +101,10 @@ class LunarBar(
         grabHandle = GrabHandle(
             id = "grab_lunar_bar",
             x = posX,
-            y = posY - 0.15f,
+            y = posY - 0.17f,
             z = posZ,
-            width = 0.42f,
-            height = 0.06f
+            width = 0.58f,
+            height = 0.085f
         )
     }
 
@@ -134,7 +134,7 @@ class LunarBar(
         setRelPos(buttons[4], 0.40f)
 
         grabHandle.x = posX
-        grabHandle.y = posY - 0.15f
+        grabHandle.y = posY - 0.17f
         grabHandle.z = posZ
     }
 
