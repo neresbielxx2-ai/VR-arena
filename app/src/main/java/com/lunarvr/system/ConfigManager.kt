@@ -7,6 +7,10 @@ class ConfigManager(context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences("lunar_vr_prefs", Context.MODE_PRIVATE)
 
+    var dwellIndex: Int
+        get() = prefs.getInt("dwell_index", 2)
+        set(value) = prefs.edit().putInt("dwell_index", value).apply()
+
     var dwellTimeSeconds: Float
         get() = prefs.getFloat("dwell_time_seconds", 2.0f)
         set(value) = prefs.edit().putFloat("dwell_time_seconds", value).apply()

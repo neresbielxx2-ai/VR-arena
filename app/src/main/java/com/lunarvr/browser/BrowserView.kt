@@ -155,11 +155,17 @@ class BrowserView(
                 wv.evaluateJavascript(jsClick) { result ->
                     try {
                         if (result != null && result != "null") {
-                            val isText = result.contains("\"isText\":true") || result.contains("isText": true")
+                            val isText = result.contains("\"isText\":true") || result.contains("\"isText\": true")
                             if (isText) {
-                                // Extract current value if available
-                                val valMatch = Regex(""val":\\s*"([^"]*)"").find(result)
-                                val initialVal = valMatch?.groupValues?.getOrNull(1) ?: ""
+                                var initialVal = ""
+                                val idx = result.indexOf("\"val\":\"")
+                                if (idx != -1) {
+                                    val start = idx + 7
+                                    val end = result.indexOf("\"", start)
+                                    if (end != -1) {
+                                        initialVal = result.substring(start, end)
+                                    }
+                                }
                                 mainHandler.post {
                                     onTextInputRequested?.invoke(initialVal) { submittedText ->
                                         mainHandler.post {
