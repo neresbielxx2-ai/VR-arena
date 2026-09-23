@@ -8,6 +8,7 @@ enum class HomeTab {
 
 class HomePanel(
     private val onOpenYouTube: () -> Unit,
+    private val onOpenLNMusic: () -> Unit,
     private val onTabChanged: () -> Unit,
     private val onRegeneratePin: () -> Unit,
     private val onCloseHome: () -> Unit
@@ -71,14 +72,19 @@ class HomePanel(
         // Tab-specific interactive elements
         when (currentTab) {
             HomeTab.APPS -> {
-                val cardW = 0.42f
+                val cardW = 0.38f
                 val cardH = 0.26f
-                val cardX = centerX - 0.32f
                 val cardY = centerY + 0.04f
 
                 buttons.add(
-                    AppButton("btn_app_youtube", "YouTube VR", cardX, cardY, centerZ, cardW, cardH) {
+                    AppButton("btn_app_youtube", "YouTube VR", centerX - 0.24f, cardY, centerZ, cardW, cardH) {
                         onOpenYouTube()
+                    }
+                )
+
+                buttons.add(
+                    AppButton("btn_app_ln_music", "LN Music", centerX + 0.24f, cardY, centerZ, cardW, cardH) {
+                        onOpenLNMusic()
                     }
                 )
             }

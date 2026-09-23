@@ -20,16 +20,16 @@ open class AppButton(
         private set
 
     override fun getBoundingBox3D(): BoundingBox3D {
-        // Generous hitbox margin for comfortable fingertip aim and dwell click
-        val paddingX = 0.04f
-        val paddingY = 0.04f
+        // Generous, natural spherical hitbox that catches gaze easily at any comfortable head pitch
+        val paddingX = 0.035f
+        val paddingY = 0.045f
         return BoundingBox3D(
             minX = x - width / 2.0f - paddingX,
             maxX = x + width / 2.0f + paddingX,
             minY = y - height / 2.0f - paddingY,
             maxY = y + height / 2.0f + paddingY,
-            minZ = z - 0.2f,
-            maxZ = z + 0.2f
+            minZ = z - 0.25f,
+            maxZ = z + 0.25f
         )
     }
 

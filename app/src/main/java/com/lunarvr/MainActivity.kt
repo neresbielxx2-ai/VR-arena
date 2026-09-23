@@ -82,6 +82,12 @@ class MainActivity : AppCompatActivity() {
 
             val renderer = VRRenderer(this, vrSession)
             vrRenderer = renderer
+            renderer.onRequestAudioPicker = {
+                launchAudioPicker()
+            }
+            onAudioFileSelected = { uri, name ->
+                renderer.handleAudioFileSelected(uri, name)
+            }
 
             val surfaceView = GLSurfaceView(this).apply {
                 setEGLContextClientVersion(2)
@@ -131,4 +137,43 @@ class MainActivity : AppCompatActivity() {
             Log.e("LunarVR", "onDestroy error", e)
         }
     }
+
+    private val PICK_AUDIO_REQUEST = 303
+    var onAudioFileSelected: ((android.net.Uri, String) -> Unit)? = null
+
+    fun launchAudioPicker() {
+        runOnUiThread {
+            try {
+                val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                    type = "audio/*"
+                    putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("audio/mpeg", "audio/mp3", "audio/*"))
+                }
+                startActivityForResult(intent, PICK_AUDIO_REQUEST)
+            } catch (e: Exception) {
+                android.util.Log.e("LunarVR", "Error launching audio picker", e)
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_AUDIO_REQUEST && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            var displayName = "Música " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+            try {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && nameIndex != -1) {
+                        val fn = cursor.getString(nameIndex)
+                        if (!fn.isNullOrEmpty()) {
+                            displayName = fn.removeSuffix(".mp3").removeSuffix(".MP3")
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+            onAudioFileSelected?.invoke(uri, displayName)
+        }
+    }
+
 }

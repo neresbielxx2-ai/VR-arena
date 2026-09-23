@@ -45,12 +45,12 @@ class LunarBar(
 
     // World position of the bar in spherical coordinates: yawDeg, height Y, distance Z
     var yawDeg: Float = 0.0f
-    var posY: Float = -0.28f
-    var radiusZ: Float = 1.35f
+    var posY: Float = -0.38f
+    var radiusZ: Float = 1.25f
 
     // Cartesian coordinates
     var posX: Float = 0.0f
-    var posZ: Float = -1.35f
+    var posZ: Float = -1.25f
 
     // Interactive buttons and grab handle
     val buttons = mutableListOf<AppButton>()

@@ -123,28 +123,91 @@ class VRRenderer(
         }
     )
 
-    // Home / Library Panel (inspired by Meta Quest Store and Home Library)
-    var isYouTubeMode: Boolean = false
-    val homePanel = HomePanel(
-        onOpenYouTube = {
-            isYouTubeMode = true
-            browserController.updateUrl("https://m.youtube.com")
-            browserView?.loadUrl("https://m.youtube.com")
-            handleNavigation(LunarNavDestination.BROWSER)
-            showNotification("Abrindo YouTube VR...")
-        },
-        onTabChanged = {
+    // Music Manager & LN Music Panel
+    val musicManager = com.lunarvr.music.MusicManager(context)
+    var musicVRPanel: VRPanel? = null
+    var isMusicOpen: Boolean = false
+    var musicOpenStartTime: Long = 0L
+
+    var musicYawX: Float = 0f
+    var musicHeightY: Float = 0.12f
+    var musicPosZ: Float = -1.35f
+
+    var onRequestAudioPicker: (() -> Unit)? = null
+
+    fun handleAudioFileSelected(uri: android.net.Uri, defaultName: String) {
+        val track = musicManager.addTrackFromUri(uri, defaultName)
+        if (track != null) {
+            musicPanel.setupButtons(musicYawX, musicHeightY, musicPosZ)
             refreshInteractiveElements()
-        },
-        onRegeneratePin = {
-            vrStreamServer.regeneratePin()
-            showNotification("Novo Código PC: " + vrStreamServer.connectionPin)
-        },
-        onCloseHome = {
-            openDestinations.clear(); currentDestination = null
-            refreshInteractiveElements()
+            showNotification("Música Adicionada: ${track.name}")
+            openKeyboardForWebInput(track.name) { newName: String ->
+                musicManager.renameTrack(track.id, newName)
+                musicPanel.setupButtons(musicYawX, musicHeightY, musicPosZ)
+                refreshInteractiveElements()
+                showNotification("Salvo: ${track.name}")
+            }
+        } else {
+            showNotification("Falha ao carregar arquivo de áudio")
         }
-    )
+    }
+
+    lateinit var musicPanel: com.lunarvr.ui.MusicPanel
+    lateinit var homePanel: HomePanel
+
+    init {
+        musicPanel = com.lunarvr.ui.MusicPanel(
+            musicManager = musicManager,
+            onPickFileClicked = {
+                onRequestAudioPicker?.invoke()
+            },
+            onCloseClicked = {
+                isMusicOpen = false
+                refreshInteractiveElements()
+            },
+            onRenameRequested = { track ->
+                openKeyboardForWebInput(track.name) { newName: String ->
+                    musicManager.renameTrack(track.id, newName)
+                    musicPanel.setupButtons(musicYawX, musicHeightY, musicPosZ)
+                    refreshInteractiveElements()
+                    showNotification("Música renomeada: $newName")
+                }
+            }
+        )
+
+        homePanel = HomePanel(
+            onOpenYouTube = {
+                isYouTubeMode = true
+                browserController.updateUrl("https://m.youtube.com")
+                browserView?.loadUrl("https://m.youtube.com")
+                handleNavigation(LunarNavDestination.BROWSER)
+                showNotification("Abrindo YouTube VR...")
+            },
+            onOpenLNMusic = {
+                openDestinations.remove(LunarNavDestination.HOME)
+                homePanel.isVisible = false
+                isMusicOpen = true
+                musicOpenStartTime = android.os.SystemClock.uptimeMillis()
+                musicPanel.setupButtons(musicYawX, musicHeightY, musicPosZ)
+                refreshInteractiveElements()
+                showNotification("Abrindo LN Music...")
+            },
+            onTabChanged = {
+                refreshInteractiveElements()
+            },
+            onRegeneratePin = {
+                vrStreamServer.regeneratePin()
+                showNotification("Novo Código PC: " + vrStreamServer.connectionPin)
+            },
+            onCloseHome = {
+                openDestinations.clear()
+                currentDestination = null
+                refreshInteractiveElements()
+            }
+        )
+    }
+
+    var isYouTubeMode: Boolean = false
 
     // PC Screen Sharing WebSocket / TCP Stream Server
     val vrStreamServer = VRStreamServer()
@@ -689,6 +752,9 @@ class VRRenderer(
             if (openDestinations.contains(LunarNavDestination.HOME)) {
                 updateHomePanel()
             }
+            if (isMusicOpen) {
+                updateMusicPanel()
+            }
             if (openDestinations.contains(LunarNavDestination.BROWSER)) {
                 updateBrowserPanels()
             }
@@ -792,6 +858,9 @@ class VRRenderer(
         // Render all simultaneously open tabs (up to 3 comfortably side-by-side)
         if (openDestinations.contains(LunarNavDestination.HOME)) {
             homeVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
+        }
+        if (isMusicOpen) {
+            musicVRPanel?.bindAndRender(panelProgram, vpMatrix, aPosHandle, aTexHandle, uMvpHandle)
         }
         if (openDestinations.contains(LunarNavDestination.BROWSER)) {
             if (!isYouTubeMode) {
@@ -1184,6 +1253,12 @@ class VRRenderer(
             interactionManager.register(envGrabHandle)
         }
 
+        if (isMusicOpen) {
+            for (btn in musicPanel.buttons) {
+                interactionManager.register(btn)
+            }
+        }
+
         // Register Keyboard buttons and its drag handle if visible
         if (vrKeyboard.isVisible) {
             for (btn in keyboardButtons) {
@@ -1530,10 +1605,9 @@ class VRRenderer(
                 paint.color = if (isHovered) Color.parseColor("#EF4444") else Color.parseColor("#2D3748")
                 canvas.drawRoundRect(cardRect, 28f, 28f, paint)
 
-                // YouTube Icon in center of top card artwork
-                ModernIcons.drawYouTubeIcon(canvas, paint, cardRect.centerX(), 265f, 56f)
+                // YouTube Icon
+                ModernIcons.drawYouTubeIcon(canvas, paint, 240f, 265f, 56f)
 
-                // App Title and Category
                 paint.style = Paint.Style.FILL
                 paint.textSize = 28f
                 paint.color = Color.parseColor("#F8FAFC")
@@ -1543,7 +1617,6 @@ class VRRenderer(
                 paint.color = Color.parseColor("#94A3B8")
                 canvas.drawText("Vídeos e Mídia VR", 90f, 400f, paint)
 
-                // Dwell Progress bar on YouTube card
                 if (isHovered && ytBtn != null && ytBtn.hoverProgress > 0f) {
                     paint.color = Color.parseColor("#EF4444")
                     paint.strokeWidth = 7f
@@ -1551,15 +1624,57 @@ class VRRenderer(
                     canvas.drawLine(cardRect.left + 20f, cardRect.bottom - 12f, cardRect.left + 20f + progW, cardRect.bottom - 12f, paint)
                 }
 
+                // LN Music Card (Right)
+                val musicCardRect = RectF(480f, 150f, 840f, 440f)
+                val musicBtn = homePanel.buttons.find { it.id == "btn_app_ln_music" }
+                val isMusicHovered = musicBtn?.isHovered == true
+
+                paint.style = Paint.Style.FILL
+                paint.color = if (isMusicHovered) Color.parseColor("#1A2B20") else Color.parseColor("#121418")
+                canvas.drawRoundRect(musicCardRect, 28f, 28f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = if (isMusicHovered) 3.5f else 1.8f
+                paint.color = if (isMusicHovered) Color.parseColor("#1ED760") else Color.parseColor("#1DB954")
+                canvas.drawRoundRect(musicCardRect, 28f, 28f, paint)
+
+                // Sound wave disc icon
+                val mcx = musicCardRect.centerX()
+                paint.style = Paint.Style.FILL
+                paint.color = Color.parseColor("#1DB954")
+                canvas.drawCircle(mcx, 265f, 30f, paint)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                paint.color = Color.BLACK
+                canvas.drawCircle(mcx, 265f, 12f, paint)
+
+                paint.style = Paint.Style.FILL
+                paint.textSize = 28f
+                paint.color = Color.parseColor("#F8FAFC")
+                canvas.drawText("LN Music", 510f, 365f, paint)
+
+                paint.textSize = 20f
+                paint.color = Color.parseColor("#1DB954")
+                canvas.drawText("Músicas MP3 do Celular", 510f, 400f, paint)
+
+                if (isMusicHovered && musicBtn != null && musicBtn.hoverProgress > 0f) {
+                    paint.color = Color.parseColor("#1DB954")
+                    paint.strokeWidth = 7f
+                    val progW = (musicCardRect.width() - 40f) * musicBtn.hoverProgress
+                    canvas.drawLine(musicCardRect.left + 20f, musicCardRect.bottom - 12f, musicCardRect.left + 20f + progW, musicCardRect.bottom - 12f, paint)
+                }
+
                 // Info pill
                 paint.style = Paint.Style.FILL
                 paint.color = Color.parseColor("#1E293B")
-                val infoRect = RectF(500f, 150f, 1220f, 300f)
+                val infoRect = RectF(880f, 150f, 1240f, 440f)
                 canvas.drawRoundRect(infoRect, 22f, 22f, paint)
                 paint.textSize = 22f
                 paint.color = Color.parseColor("#CBD5E1")
-                canvas.drawText("✦ Selecione o YouTube para abrir o aplicativo de vídeo em tela cheia.", 530f, 210f, paint)
-                canvas.drawText("✦ Navegação limpa e focada no conteúdo, sem barras adicionais.", 530f, 255f, paint)
+                canvas.drawText("✦ LN Music Player:", 900f, 210f, paint)
+                canvas.drawText("• Importa MP3 do celular", 900f, 255f, paint)
+                canvas.drawText("• Salva permanentemente", 900f, 300f, paint)
+                canvas.drawText("• Controles Play/Pause +/-10s", 900f, 345f, paint)
 
             } else if (homePanel.currentTab == HomeTab.JOGOS) {
                 // Jogos Tab: Empty State with message "Nenhum jogo disponível."
@@ -1812,6 +1927,192 @@ class VRRenderer(
             )
         }
     }
+
+    private fun updateMusicPanel() {
+        val now = android.os.SystemClock.uptimeMillis()
+        val elapsed = now - musicOpenStartTime
+        val animProg = (elapsed / 220f).coerceIn(0.05f, 1f)
+        val ease = 1f - Math.pow((1.0 - animProg).toDouble(), 3.0).toFloat()
+        musicVRPanel?.setDimensions(1.35f * ease, 0.82f * ease)
+
+        musicVRPanel?.drawCustom { canvas, paint ->
+            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+
+            val mainRect = RectF(16f, 16f, 1264f, 752f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#E6121418")
+            canvas.drawRoundRect(mainRect, 32f, 32f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.color = Color.parseColor("#1DB954")
+            canvas.drawRoundRect(mainRect, 32f, 32f, paint)
+
+            val closeBtn = musicPanel.buttons.find { it.id == "btn_close_music" }
+            ModernIcons.drawCloseButton(canvas, paint, 50f, 65f, 22f, closeBtn?.isHovered == true)
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 34f
+            paint.isFakeBoldText = true
+            paint.color = Color.WHITE
+            canvas.drawText("LN Music", 95f, 75f, paint)
+            paint.isFakeBoldText = false
+
+            paint.textSize = 20f
+            paint.color = Color.parseColor("#94A3B8")
+            canvas.drawText("Reprodutor de Áudio Local VR", 260f, 75f, paint)
+
+            val addBtn = musicPanel.buttons.find { it.id == "btn_add_music" }
+            val addRect = RectF(940f, 32f, 1240f, 96f)
+            paint.style = Paint.Style.FILL
+            paint.color = if (addBtn?.isHovered == true) Color.parseColor("#1ED760") else Color.parseColor("#1DB954")
+            canvas.drawRoundRect(addRect, 24f, 24f, paint)
+            paint.textSize = 22f
+            paint.isFakeBoldText = true
+            paint.color = Color.BLACK
+            val addTw = paint.measureText("+ Adicionar música")
+            canvas.drawText("+ Adicionar música", addRect.centerX() - addTw / 2f, 72f, paint)
+            paint.isFakeBoldText = false
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f
+            paint.color = Color.parseColor("#282828")
+            canvas.drawLine(40f, 120f, 1240f, 120f, paint)
+
+            val tracks = musicManager.tracks
+            if (tracks.isEmpty()) {
+                paint.style = Paint.Style.FILL
+                paint.textSize = 28f
+                paint.color = Color.parseColor("#E2E8F0")
+                val emptyTxt = "Nenhuma música salva"
+                val tw = paint.measureText(emptyTxt)
+                canvas.drawText(emptyTxt, (1280f - tw) / 2f, 320f, paint)
+
+                paint.textSize = 20f
+                paint.color = Color.parseColor("#80848E")
+                val subTxt = "Clique no botão acima ou abaixo para importar arquivos MP3 do celular."
+                val subTw = paint.measureText(subTxt)
+                canvas.drawText(subTxt, (1280f - subTw) / 2f, 370f, paint)
+
+                val centerAddRect = RectF(480f, 410f, 800f, 480f)
+                paint.style = Paint.Style.FILL
+                paint.color = if (addBtn?.isHovered == true) Color.parseColor("#1ED760") else Color.parseColor("#1DB954")
+                canvas.drawRoundRect(centerAddRect, 28f, 28f, paint)
+                paint.textSize = 22f
+                paint.isFakeBoldText = true
+                paint.color = Color.BLACK
+                val btnW = paint.measureText("+ Adicionar música")
+                canvas.drawText("+ Adicionar música", centerAddRect.centerX() - btnW / 2f, 452f, paint)
+                paint.isFakeBoldText = false
+            } else {
+                val startY = 150f
+                for (i in 0 until minOf(tracks.size, 4)) {
+                    val track = tracks[i]
+                    val isPlayingThis = (musicManager.currentTrack?.id == track.id)
+                    val trackBtn = musicPanel.buttons.find { it.id == "btn_track_${track.id}" }
+                    val isHovered = trackBtn?.isHovered == true
+
+                    val ty = startY + i * 110f
+                    val trackCard = RectF(40f, ty, 1080f, ty + 95f)
+
+                    paint.style = Paint.Style.FILL
+                    paint.color = if (isHovered) Color.parseColor("#282828") else if (isPlayingThis) Color.parseColor("#1A2B20") else Color.parseColor("#181818")
+                    canvas.drawRoundRect(trackCard, 20f, 20f, paint)
+
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = if (isPlayingThis) 2.5f else 1f
+                    paint.color = if (isPlayingThis) Color.parseColor("#1DB954") else Color.parseColor("#333333")
+                    canvas.drawRoundRect(trackCard, 20f, 20f, paint)
+
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 24f
+                    paint.color = if (isPlayingThis) Color.parseColor("#1DB954") else Color.parseColor("#94A3B8")
+                    val playState = if (isPlayingThis && musicManager.isPlaying) "▶" else "${i + 1}"
+                    canvas.drawText(playState, 70f, ty + 56f, paint)
+
+                    paint.textSize = 24f
+                    paint.isFakeBoldText = isPlayingThis
+                    paint.color = if (isPlayingThis) Color.parseColor("#1DB954") else Color.WHITE
+                    canvas.drawText(track.name, 120f, ty + 46f, paint)
+                    paint.isFakeBoldText = false
+
+                    paint.textSize = 18f
+                    paint.color = Color.parseColor("#64748B")
+                    canvas.drawText("Áudio Local MP3 • Alta Fidelidade", 120f, ty + 76f, paint)
+
+                    val editBtn = musicPanel.buttons.find { it.id == "btn_edit_${track.id}" }
+                    val editRect = RectF(1100f, ty, 1240f, ty + 95f)
+                    paint.style = Paint.Style.FILL
+                    paint.color = if (editBtn?.isHovered == true) Color.parseColor("#3E3E3E") else Color.parseColor("#242424")
+                    canvas.drawRoundRect(editRect, 20f, 20f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 1f
+                    paint.color = Color.parseColor("#3E3E3E")
+                    canvas.drawRoundRect(editRect, 20f, 20f, paint)
+
+                    paint.style = Paint.Style.FILL
+                    paint.textSize = 20f
+                    paint.color = Color.parseColor("#CBD5E1")
+                    val renTw = paint.measureText("Renomear")
+                    canvas.drawText("Renomear", editRect.centerX() - renTw / 2f, ty + 55f, paint)
+                }
+            }
+
+            val barRect = RectF(30f, 620f, 1250f, 730f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#181818")
+            canvas.drawRoundRect(barRect, 22f, 22f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.2f
+            paint.color = Color.parseColor("#282828")
+            canvas.drawRoundRect(barRect, 22f, 22f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 21f
+            val playingName = musicManager.currentTrack?.name ?: "Nenhuma música em reprodução"
+            paint.color = if (musicManager.currentTrack != null) Color.WHITE else Color.parseColor("#64748B")
+            canvas.drawText(playingName, 55f, 678f, paint)
+
+            val p10 = musicPanel.buttons.find { it.id == "btn_music_prev10" }
+            val p10Rect = RectF(520f, 638f, 610f, 712f)
+            paint.style = Paint.Style.FILL
+            paint.color = if (p10?.isHovered == true) Color.parseColor("#333333") else Color.parseColor("#222222")
+            canvas.drawRoundRect(p10Rect, 18f, 18f, paint)
+            paint.color = Color.WHITE
+            paint.textSize = 20f
+            canvas.drawText("-10s", 543f, 680f, paint)
+
+            val pp = musicPanel.buttons.find { it.id == "btn_music_playpause" }
+            val ppCx = 660f
+            val ppCy = 675f
+            paint.style = Paint.Style.FILL
+            paint.color = if (pp?.isHovered == true) Color.parseColor("#1ED760") else Color.WHITE
+            canvas.drawCircle(ppCx, ppCy, 32f, paint)
+            paint.color = Color.BLACK
+            paint.textSize = 24f
+            val ppSymbol = if (musicManager.isPlaying) "❚❚" else "▶"
+            val ppSymW = paint.measureText(ppSymbol)
+            canvas.drawText(ppSymbol, ppCx - ppSymW / 2f + (if (!musicManager.isPlaying) 2f else 0f), ppCy + 8f, paint)
+
+            val n10 = musicPanel.buttons.find { it.id == "btn_music_next10" }
+            val n10Rect = RectF(710f, 638f, 800f, 712f)
+            paint.style = Paint.Style.FILL
+            paint.color = if (n10?.isHovered == true) Color.parseColor("#333333") else Color.parseColor("#222222")
+            canvas.drawRoundRect(n10Rect, 18f, 18f, paint)
+            paint.color = Color.WHITE
+            paint.textSize = 20f
+            canvas.drawText("+10s", 733f, 680f, paint)
+
+            val curMs = musicManager.getCurrentPositionMs()
+            val durMs = musicManager.getDurationMs()
+            val curStr = String.format("%02d:%02d", (curMs / 1000) / 60, (curMs / 1000) % 60)
+            val durStr = if (durMs > 0) String.format("%02d:%02d", (durMs / 1000) / 60, (durMs / 1000) % 60) else "--:--"
+            paint.textSize = 20f
+            paint.color = Color.parseColor("#94A3B8")
+            canvas.drawText("$curStr / $durStr", 860f, 680f, paint)
+        }
+    }
+
     private fun updateSettingsPanel() {
         settingsVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
@@ -2154,7 +2455,7 @@ class VRRenderer(
 
     private fun initPanels() {
         // Lunar Bar
-        barPanel = VRPanel("lunar_bar", 0.0f, -0.28f, -1.35f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
+        barPanel = VRPanel("lunar_bar", 0.0f, -0.38f, -1.25f, 1.15f, 0.28f, 1024, 256).also { it.initGL() }
 
         // Browser & URL Panels (16:10 spacious wide layout with native 1280x800 resolution)
         urlPanel = VRPanel("url_panel", 0.0f, 0.58f, -1.45f, 1.60f, 0.15f, 1280, 120).also { it.initGL() }
@@ -2171,6 +2472,7 @@ class VRRenderer(
 
         // Home / Store Library Panel (Meta Quest UI)
         homeVRPanel = VRPanel("home_panel", 0.0f, 0.12f, -1.35f, 1.45f, 0.88f, 1280, 768).also { it.initGL() }
+        musicVRPanel = VRPanel("music_panel", 0.0f, 0.12f, -1.35f, 1.35f, 0.82f, 1280, 768).also { it.initGL() }
     }
 
     private fun initStarfield() {

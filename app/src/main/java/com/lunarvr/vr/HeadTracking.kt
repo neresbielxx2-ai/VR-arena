@@ -118,12 +118,20 @@ class HeadTracking(private val context: Context) : SensorEventListener {
 
     fun recenter() {
         synchronized(this) {
-            SensorManager.getOrientation(landscapeMatrix, orientationVals)
-            // Save both yaw and pitch so whenever you recenter (or start),
-            // your forward view is instantly leveled straight ahead without neck strain!
-            yawOffsetDeg = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
-            pitchOffsetDeg = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
-            isCalibrated = true
+            try {
+                if (landscapeMatrix.isNotEmpty() && orientationVals.size >= 3) {
+                    SensorManager.getOrientation(landscapeMatrix, orientationVals)
+                    val yaw = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
+                    val pitch = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
+                    if (!yaw.isNaN() && !pitch.isNaN()) {
+                        yawOffsetDeg = yaw
+                        pitchOffsetDeg = pitch
+                        isCalibrated = true
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e("LunarVR", "Error in recenter", e)
+            }
             posX = 0f
             posY = 0f
             posZ = 0f
@@ -132,10 +140,10 @@ class HeadTracking(private val context: Context) : SensorEventListener {
             velZ = 0f
             recoveryMessage = "Visão centralizada e nivelada"
         }
-        Log.d("LunarVR", "HeadTracking recentered. Yaw offset: $yawOffsetDeg, Pitch offset: $pitchOffsetDeg")
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event == null || event.values == null || event.values.size < 3 || event.sensor == null) return
         synchronized(this) {
             lastValidEventTime = System.currentTimeMillis()
             trackingErrorDetected = false
@@ -150,7 +158,7 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                     hasGravity = true
                     if (activeSensorType == TrackingSensorType.ACCELEROMETER_ONLY ||
                         (activeSensorType == TrackingSensorType.ACCEL_GYRO_FUSION && !hasGeomagnetic)) {
-                        SensorManager.getRotationMatrix(rawRotationMatrix, null, gravity, floatArrayOf(0f, 1f, 0f))
+                        val dummyI = FloatArray(16); SensorManager.getRotationMatrix(rawRotationMatrix, dummyI, gravity, floatArrayOf(0f, 1f, 0f))
                     }
 
                     if (is6DofEnabled) {
@@ -177,7 +185,7 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                     System.arraycopy(event.values, 0, geomagnetic, 0, 3)
                     hasGeomagnetic = true
                     if (hasGravity) {
-                        SensorManager.getRotationMatrix(rawRotationMatrix, null, gravity, geomagnetic)
+                        val dummyI = FloatArray(16); SensorManager.getRotationMatrix(rawRotationMatrix, dummyI, gravity, geomagnetic)
                     }
                 }
             }
