@@ -1633,7 +1633,170 @@ class VRRenderer(
             canvas.drawText("✕", 735f, 728f, paint)
         }
     }
-private fun updateMusicPanel() {
+    private fun updateBrowserPanels() {
+        // Draw URL bar with spacious modern design (1280x120 texture)
+        urlPanel?.drawCustom { canvas, paint ->
+            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+
+            // Outer shell with rich dark violet/slate gradient look
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#F5131728")
+            canvas.drawRoundRect(RectF(10f, 10f, 1270f, 110f), 28f, 28f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2.5f
+            paint.color = Color.parseColor("#475569")
+            canvas.drawRoundRect(RectF(10f, 10f, 1270f, 110f), 28f, 28f, paint)
+
+            // Top-left Close Button '✕'
+            val closeUrlBtn = urlBar.buttons.find { it.id == "url_close_top_left" }
+            ModernIcons.drawCloseButton(canvas, paint, 38f, 60f, 20f, closeUrlBtn?.isHovered == true)
+
+            // Navigation icons (spacious layout)
+            paint.style = Paint.Style.FILL
+            paint.textSize = 32f
+            paint.color = Color.parseColor("#E2E8F0")
+            canvas.drawText("◀    ▶    ↻    ✦", 82f, 70f, paint)
+
+            // Interactive Search/URL field (expanded width: 340f to 1040f)
+            paint.color = Color.parseColor("#1E293B")
+            canvas.drawRoundRect(RectF(340f, 20f, 1040f, 100f), 20f, 20f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.color = Color.parseColor("#818CF8")
+            canvas.drawRoundRect(RectF(340f, 20f, 1040f, 100f), 20f, 20f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#38BDF8")
+            paint.textSize = 28f
+            val displayTxt = if (urlBar.displayUrl.length > 46) urlBar.displayUrl.take(46) + "..." else urlBar.displayUrl
+            canvas.drawText("🌐  $displayTxt", 365f, 68f, paint)
+
+            // Resize pill button at the right (accented purple/cyan)
+            paint.color = Color.parseColor("#312E81")
+            canvas.drawRoundRect(RectF(1060f, 20f, 1250f, 100f), 20f, 20f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.parseColor("#A855F7")
+            canvas.drawRoundRect(RectF(1060f, 20f, 1250f, 100f), 20f, 20f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#F8FAFC")
+            paint.textSize = 26f
+            canvas.drawText("⤢ ${urlBar.scaleName}", 1085f, 68f, paint)
+        }
+
+        // Draw WebView content
+        val bmp = browserView?.captureBitmap()
+        if (bmp != null) {
+            browserPanel?.copyBitmap(bmp)
+        }
+    }
+
+    private fun updateEnvironmentPanel() {
+        envVRPanel?.drawCustom { canvas, paint ->
+            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+
+            // Outer Curved Glass Window shell (Meta Quest / VisionOS style dark acrylic glass)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#F50D1322")
+            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2.5f
+            paint.color = Color.parseColor("#38BDF8")
+            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
+
+            // Top-left Close Button '✕'
+            val closeEnvBtn = environmentPanel.buttons.find { it.id == "btn_close_env_top_left" }
+            ModernIcons.drawCloseButton(canvas, paint, 48f, 65f, 20f, closeEnvBtn?.isHovered == true)
+
+                        // Draw '+' and '-' scaling buttons on Environment Panel
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#1E293B")
+            val eMinusRect = RectF(870f, 32f, 930f, 92f)
+            val ePlusRect = RectF(945f, 32f, 1005f, 92f)
+            canvas.drawRoundRect(eMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(ePlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            paint.color = Color.parseColor("#475569")
+            canvas.drawRoundRect(eMinusRect, 16f, 16f, paint)
+            canvas.drawRoundRect(ePlusRect, 16f, 16f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 30f
+            paint.color = Color.parseColor("#38BDF8")
+            canvas.drawText("－", 886f, 72f, paint)
+            canvas.drawText("＋", 961f, 72f, paint)
+
+            // Header Icon and Title
+            ModernIcons.drawEnvironmentIcon(canvas, paint, 92f, 65f, 30f, Color.parseColor("#00E5FF"))
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 32f
+            paint.color = Color.parseColor("#00E5FF")
+            canvas.drawText("CENÁRIOS VIRTUAIS VR", 125f, 75f, paint)
+
+            // Description
+            paint.textSize = 24f
+            paint.color = Color.parseColor("#94A3B8")
+            canvas.drawText("Escolha o tema imersivo do seu ambiente espacial:", 50f, 130f, paint)
+
+            // Environment cards (4 high-quality spatial themes)
+            val envs = com.lunarvr.environment.VREnvironmentType.values()
+            for (i in envs.indices) {
+                val env = envs[i]
+                val col = i % 2
+                val row = i / 2
+                val bx = 50f + col * 480f
+                val by = 155f + row * 155f
+                val bw = 440f
+                val bh = 135f
+
+                val isCurrent = (env == environmentManager.currentEnvironment)
+
+                val cardTheme = when (env) {
+                    com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW -> Pair("#1E3A8A", "#38BDF8")
+                    com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
+                    com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
+                    com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
+                    com.lunarvr.environment.VREnvironmentType.PASSTHROUGH_CAM -> Pair("#334155", "#00E5FF")
+                }
+
+                paint.style = Paint.Style.FILL
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.first) else Color.parseColor("#151D2A")
+                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = if (isCurrent) 3.5f else 1.8f
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#334155")
+                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
+
+                // Title
+                paint.style = Paint.Style.FILL
+                paint.textSize = 28f
+                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#F8FAFC")
+                val activeTag = if (isCurrent) "  ✓ Ativo" else ""
+                canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 52f, paint)
+
+                // Subtitle
+                paint.textSize = 20f
+                paint.color = Color.parseColor("#94A3B8")
+                canvas.drawText(env.description, bx + 24f, by + 100f, paint)
+            }
+
+            // Drag handle at bottom
+            ModernIcons.drawDragHandle(
+                canvas, paint, 512f, 665f, 380f, 28f,
+                envGrabHandle.isHovered, envGrabHandle.isGrabbed, envGrabHandle.hoverProgress
+            )
+        }
+    }
+
+    private fun updateMusicPanel() {
         val now = android.os.SystemClock.uptimeMillis()
         val elapsed = now - musicOpenStartTime
         val animProg = (elapsed / 220f).coerceIn(0.05f, 1f)

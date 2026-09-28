@@ -40,7 +40,7 @@ class VRKeyboard {
     val symbolRows = listOf(
         listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "BACKSPACE"),
         listOf("@", "#", "$", "%", "&", "-", "+", "(", ")", "ENTER"),
-        listOf("ABC", "*", """, "'", ":", ";", "!", "?", "/", "\", "ABC"),
+        listOf("ABC", "*", "\"", "'", ":", ";", "!", "?", "/", "\\", "ABC"),
         listOf("ABC", "EMOJI", "SPACE", "LANG", "SETTINGS", "HIDE_KB")
     )
 
