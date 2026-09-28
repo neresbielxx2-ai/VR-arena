@@ -20,12 +20,12 @@ class EnvironmentBackdrop(val type: VREnvironmentType) {
         panel.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
             when (type) {
+                VREnvironmentType.BEACH_PARADISE -> drawBeachParadise(canvas, paint)
                 VREnvironmentType.LUNAR_EARTH_VIEW -> drawLunarEarthView(canvas, paint)
                 VREnvironmentType.CYBER_SYNTHWAVE -> drawCyberSynthwave(canvas, paint)
                 VREnvironmentType.ZEN_FOREST -> drawZenForest(canvas, paint)
-                VREnvironmentType.MINIMAL_LOFT -> drawMinimalLoft(canvas, paint)
                 VREnvironmentType.PASSTHROUGH_CAM -> {
-                    // Transparent backdrop: phone camera feed is visible underneath
+                    // Transparent backdrop
                 }
             }
         }
@@ -257,4 +257,96 @@ class EnvironmentBackdrop(val type: VREnvironmentType) {
         paint.color = Color.parseColor("#38BDF8")
         canvas.drawLine(0f, h * 0.70f, w, h * 0.70f, paint)
     }
+
+    private fun drawBeachParadise(canvas: Canvas, paint: Paint) {
+        val w = 1024f
+        val h = 614f
+
+        // Tropical Sunset Gradient Sky
+        val skyGrad = LinearGradient(0f, 0f, 0f, h * 0.65f, Color.parseColor("#FF7E40"), Color.parseColor("#4A0E4E"), Shader.TileMode.CLAMP)
+        paint.shader = skyGrad
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(0f, 0f, w, h * 0.65f, paint)
+        paint.shader = null
+
+        // Golden Sun descending on ocean horizon
+        val sunCx = w * 0.48f
+        val sunCy = h * 0.52f
+        val sunGrad = RadialGradient(sunCx, sunCy, 80f, Color.parseColor("#FFE87C"), Color.parseColor("#FF6B35"), Shader.TileMode.CLAMP)
+        paint.shader = sunGrad
+        canvas.drawCircle(sunCx, sunCy, 75f, paint)
+        paint.shader = null
+
+        // Turquoise Ocean with sunset reflections
+        val seaRect = RectF(0f, h * 0.50f, w, h * 0.72f)
+        val seaGrad = LinearGradient(0f, h * 0.50f, 0f, h * 0.72f, Color.parseColor("#0284C7"), Color.parseColor("#0D9488"), Shader.TileMode.CLAMP)
+        paint.shader = seaGrad
+        canvas.drawRect(seaRect, paint)
+        paint.shader = null
+
+        // Sun glitter trail across the water
+        paint.color = Color.parseColor("#40FDE047")
+        paint.strokeWidth = 3f
+        for (i in 0..12) {
+            val y = h * 0.51f + i * 10f
+            val spread = 20f + i * 22f
+            canvas.drawLine(sunCx - spread, y, sunCx + spread, y, paint)
+        }
+
+        // Golden Sand Beach in foreground
+        val sandPath = Path().apply {
+            moveTo(0f, h)
+            lineTo(0f, h * 0.70f)
+            quadTo(w * 0.35f, h * 0.66f, w * 0.70f, h * 0.69f)
+            quadTo(w * 0.88f, h * 0.72f, w, h * 0.68f)
+            lineTo(w, h)
+            close()
+        }
+        val sandGrad = LinearGradient(0f, h * 0.66f, 0f, h, Color.parseColor("#EAB308"), Color.parseColor("#78350F"), Shader.TileMode.CLAMP)
+        paint.shader = sandGrad
+        canvas.drawPath(sandPath, paint)
+        paint.shader = null
+
+        // Gentle Ocean Wave foam line
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 4f
+        paint.color = Color.parseColor("#CCF0FDFA")
+        val foam = Path().apply {
+            moveTo(0f, h * 0.70f)
+            quadTo(w * 0.35f, h * 0.66f, w * 0.70f, h * 0.69f)
+            quadTo(w * 0.88f, h * 0.72f, w, h * 0.68f)
+        }
+        canvas.drawPath(foam, paint)
+
+        // Palm Trees silhouettes on the right and left
+        paint.style = Paint.Style.FILL
+        paint.color = Color.parseColor("#1B2A1E")
+
+        // Right Palm Trunk
+        val trunk = Path().apply {
+            moveTo(w * 0.88f, h)
+            quadTo(w * 0.85f, h * 0.62f, w * 0.82f, h * 0.38f)
+            lineTo(w * 0.84f, h * 0.38f)
+            quadTo(w * 0.87f, h * 0.62f, w * 0.90f, h)
+            close()
+        }
+        canvas.drawPath(trunk, paint)
+
+        // Palm leaves
+        val px = w * 0.83f
+        val py = h * 0.38f
+        for (a in listOf(-70.0, -40.0, -10.0, 20.0, 50.0, 80.0, 110.0)) {
+            val rad = Math.toRadians(a)
+            val lx = px + (120f * Math.cos(rad)).toFloat()
+            val ly = py + (90f * Math.sin(rad)).toFloat()
+            val leaf = Path().apply {
+                moveTo(px, py)
+                quadTo((px + lx) / 2f, py - 40f, lx, ly)
+                quadTo((px + lx) / 2f + 10f, py - 10f, px, py)
+                close()
+            }
+            canvas.drawPath(leaf, paint)
+        }
+    }
+
 }

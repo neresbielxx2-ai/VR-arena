@@ -90,7 +90,7 @@ class VRRenderer(
             lunarBar = lunarBar,
             configManager = configManager,
             onResetToDefaults = {
-                environmentManager.setEnvironment(com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW)
+                environmentManager.setEnvironment(com.lunarvr.environment.VREnvironmentType.BEACH_PARADISE)
                 interactionManager.userDwellTimeMs = 2000L
                 openDestinations.clear(); currentDestination = null
                 refreshInteractiveElements()
@@ -192,16 +192,19 @@ class VRRenderer(
                 refreshInteractiveElements()
                 showNotification("Abrindo LN Music...")
             },
+            onOpenBrowser = {
+                isYouTubeMode = false
+                handleNavigation(LunarNavDestination.BROWSER)
+            },
+            onOpenSettings = {
+                handleNavigation(LunarNavDestination.SETTINGS)
+            },
             onTabChanged = {
                 refreshInteractiveElements()
             },
-            onRegeneratePin = {
-                vrStreamServer.regeneratePin()
-                showNotification("Novo Código PC: " + vrStreamServer.connectionPin)
-            },
             onCloseHome = {
-                openDestinations.clear()
-                currentDestination = null
+                openDestinations.remove(LunarNavDestination.HOME)
+                currentDestination = openDestinations.lastOrNull()
                 refreshInteractiveElements()
             }
         )
@@ -1468,467 +1471,169 @@ class VRRenderer(
         val scale = homeScaleFactor * easeProgress
         homeVRPanel?.setDimensions(1.45f * scale, 0.88f * scale)
 
-
         homeVRPanel?.drawCustom { canvas, paint ->
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            // Outer Curved Glass Window shell (Meta Quest 3/3S style dark acrylic glass with subtle border glow)
+            // Outer Curved Slate Card (Meta Quest 3 Horizon OS matte slate #232930)
+            val mainRect = RectF(14f, 14f, 1266f, 754f)
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F5101420")
-            val mainRect = RectF(12f, 12f, 1268f, 756f)
-            canvas.drawRoundRect(mainRect, 36f, 36f, paint)
+            paint.color = Color.parseColor("#F520262D")
+            canvas.drawRoundRect(mainRect, 32f, 32f, paint)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#334155")
-            canvas.drawRoundRect(mainRect, 36f, 36f, paint)
+            paint.strokeWidth = 1.2f
+            paint.color = Color.parseColor("#343E48")
+            canvas.drawRoundRect(mainRect, 32f, 32f, paint)
 
-            // Top-left Close Button '✕'
-            val closeBtn = homePanel.buttons.find { it.id == "btn_close_home_top_left" }
-            ModernIcons.drawCloseButton(canvas, paint, 50f, 65f, 22f, closeBtn?.isHovered == true)
-
-                        // Draw '+' and '-' scaling buttons on Home Panel
+            // === LEFT SIDEBAR RAIL ===
+            val railW = 80f
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#1E293B")
-            val hMinusRect = RectF(1110f, 32f, 1170f, 92f)
-            val hPlusRect = RectF(1185f, 32f, 1245f, 92f)
-            canvas.drawRoundRect(hMinusRect, 16f, 16f, paint)
-            canvas.drawRoundRect(hPlusRect, 16f, 16f, paint)
+            paint.color = Color.parseColor("#181D23")
+            canvas.drawRoundRect(RectF(14f, 14f, railW, 754f), 32f, 32f, paint)
+            canvas.drawRect(RectF(railW - 16f, 14f, railW, 754f), paint)
 
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2f
-            paint.color = Color.parseColor("#475569")
-            canvas.drawRoundRect(hMinusRect, 16f, 16f, paint)
-            canvas.drawRoundRect(hPlusRect, 16f, 16f, paint)
+            // Rail Icons (Search, 9-Dots Grid in White Pill, Settings, Download)
+            ModernIcons.drawGlobeIcon(canvas, paint, 47f, 70f, 24f, Color.parseColor("#94A3B8"))
 
+            // 9-Dots App Library Icon inside white highlight circle
             paint.style = Paint.Style.FILL
-            paint.textSize = 30f
-            paint.color = Color.parseColor("#38BDF8")
-            canvas.drawText("－", 1126f, 72f, paint)
-            canvas.drawText("＋", 1201f, 72f, paint)
+            paint.color = Color.WHITE
+            canvas.drawCircle(47f, 140f, 22f, paint)
+            ModernIcons.drawAppGridIcon(canvas, paint, 47f, 140f, 22f, Color.parseColor("#0F172A"))
 
-            // Header Section: Title "Biblioteca / Início" and Meta Quest Inspired Capsule Tabs
+            ModernIcons.drawSettingsIcon(canvas, paint, 47f, 210f, 24f, Color.parseColor("#94A3B8"))
+            ModernIcons.drawShiftIcon(canvas, paint, 47f, 280f, 22f, false, Color.parseColor("#94A3B8"))
+
+            // === TOP FILTER HEADER ===
+            // "All" label
             paint.style = Paint.Style.FILL
-            paint.textSize = 34f
-            paint.color = Color.parseColor("#F8FAFC")
-            canvas.drawText("Biblioteca", 95f, 75f, paint)
-
-            // Draw Meta Quest style pill segment for Tabs: [ Apps ]  [ Jogos ]  [ Conexão PC ]
-            val tabContainerRect = RectF(280f, 32f, 940f, 96f)
-            paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#1E293B")
-            canvas.drawRoundRect(tabContainerRect, 28f, 28f, paint)
-
-            // Tab 1: Apps
-            val isApps = (homePanel.currentTab == HomeTab.APPS)
-            val appsBtn = homePanel.buttons.find { it.id == "btn_tab_apps" }
-            val appsRect = RectF(284f, 36f, 480f, 92f)
-            paint.style = Paint.Style.FILL
-            paint.color = when {
-                isApps -> Color.parseColor("#6366F1")
-                appsBtn?.isHovered == true -> Color.parseColor("#334155")
-                else -> Color.TRANSPARENT
-            }
-            canvas.drawRoundRect(appsRect, 24f, 24f, paint)
-            paint.textSize = 24f
-            paint.color = if (isApps) Color.WHITE else Color.parseColor("#94A3B8")
-            var tw = paint.measureText("Apps")
-            canvas.drawText("Apps", appsRect.centerX() - tw / 2f, 72f, paint)
-            if (appsBtn?.isHovered == true && appsBtn.hoverProgress > 0f) {
-                paint.color = Color.parseColor("#38BDF8")
-                paint.strokeWidth = 4f
-                val progW = (appsRect.width() - 20f) * appsBtn.hoverProgress
-                canvas.drawLine(appsRect.left + 10f, appsRect.bottom - 4f, appsRect.left + 10f + progW, appsRect.bottom - 4f, paint)
-            }
-
-            // Tab 2: Jogos
-            val isJogos = (homePanel.currentTab == HomeTab.JOGOS)
-            val jogosBtn = homePanel.buttons.find { it.id == "btn_tab_jogos" }
-            val jogosRect = RectF(490f, 36f, 690f, 92f)
-            paint.style = Paint.Style.FILL
-            paint.color = when {
-                isJogos -> Color.parseColor("#6366F1")
-                jogosBtn?.isHovered == true -> Color.parseColor("#334155")
-                else -> Color.TRANSPARENT
-            }
-            canvas.drawRoundRect(jogosRect, 24f, 24f, paint)
-            paint.color = if (isJogos) Color.WHITE else Color.parseColor("#94A3B8")
-            tw = paint.measureText("Jogos")
-            canvas.drawText("Jogos", jogosRect.centerX() - tw / 2f, 72f, paint)
-            if (jogosBtn?.isHovered == true && jogosBtn.hoverProgress > 0f) {
-                paint.color = Color.parseColor("#38BDF8")
-                paint.strokeWidth = 4f
-                val progW = (jogosRect.width() - 20f) * jogosBtn.hoverProgress
-                canvas.drawLine(jogosRect.left + 10f, jogosRect.bottom - 4f, jogosRect.left + 10f + progW, jogosRect.bottom - 4f, paint)
-            }
-
-            // Tab 3: Conexão Compartilhamento PC
-            val isPc = (homePanel.currentTab == HomeTab.PC_SHARE)
-            val pcBtn = homePanel.buttons.find { it.id == "btn_tab_pc_share" }
-            val pcRect = RectF(700f, 36f, 936f, 92f)
-            paint.style = Paint.Style.FILL
-            paint.color = when {
-                isPc -> Color.parseColor("#6366F1")
-                pcBtn?.isHovered == true -> Color.parseColor("#334155")
-                else -> Color.TRANSPARENT
-            }
-            canvas.drawRoundRect(pcRect, 24f, 24f, paint)
-            paint.color = if (isPc) Color.WHITE else Color.parseColor("#94A3B8")
-            tw = paint.measureText("Conexão PC")
-            canvas.drawText("Conexão PC", pcRect.centerX() - tw / 2f, 72f, paint)
-            if (pcBtn?.isHovered == true && pcBtn.hoverProgress > 0f) {
-                paint.color = Color.parseColor("#38BDF8")
-                paint.strokeWidth = 4f
-                val progW = (pcRect.width() - 20f) * pcBtn.hoverProgress
-                canvas.drawLine(pcRect.left + 10f, pcRect.bottom - 4f, pcRect.left + 10f + progW, pcRect.bottom - 4f, paint)
-            }
-
-            // Divider line below header
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.5f
-            paint.color = Color.parseColor("#1E293B")
-            canvas.drawLine(50f, 120f, 1220f, 120f, paint)
-
-            // Content Area depending on selected tab
-            if (homePanel.currentTab == HomeTab.APPS) {
-                // Apps Grid: YouTube VR Card (Meta Quest style spacious rounded card with rich cover)
-                val cardRect = RectF(60f, 150f, 440f, 440f)
-                val ytBtn = homePanel.buttons.find { it.id == "btn_app_youtube" }
-                val isHovered = ytBtn?.isHovered == true
-
-                paint.style = Paint.Style.FILL
-                paint.color = if (isHovered) Color.parseColor("#1E2538") else Color.parseColor("#141926")
-                canvas.drawRoundRect(cardRect, 28f, 28f, paint)
-
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = if (isHovered) 3.5f else 1.8f
-                paint.color = if (isHovered) Color.parseColor("#EF4444") else Color.parseColor("#2D3748")
-                canvas.drawRoundRect(cardRect, 28f, 28f, paint)
-
-                // YouTube Icon
-                ModernIcons.drawYouTubeIcon(canvas, paint, 240f, 265f, 56f)
-
-                paint.style = Paint.Style.FILL
-                paint.textSize = 28f
-                paint.color = Color.parseColor("#F8FAFC")
-                canvas.drawText("YouTube", 90f, 365f, paint)
-
-                paint.textSize = 20f
-                paint.color = Color.parseColor("#94A3B8")
-                canvas.drawText("Vídeos e Mídia VR", 90f, 400f, paint)
-
-                if (isHovered && ytBtn != null && ytBtn.hoverProgress > 0f) {
-                    paint.color = Color.parseColor("#EF4444")
-                    paint.strokeWidth = 7f
-                    val progW = (cardRect.width() - 40f) * ytBtn.hoverProgress
-                    canvas.drawLine(cardRect.left + 20f, cardRect.bottom - 12f, cardRect.left + 20f + progW, cardRect.bottom - 12f, paint)
-                }
-
-                // LN Music Card (Right)
-                val musicCardRect = RectF(480f, 150f, 840f, 440f)
-                val musicBtn = homePanel.buttons.find { it.id == "btn_app_ln_music" }
-                val isMusicHovered = musicBtn?.isHovered == true
-
-                paint.style = Paint.Style.FILL
-                paint.color = if (isMusicHovered) Color.parseColor("#1A2B20") else Color.parseColor("#121418")
-                canvas.drawRoundRect(musicCardRect, 28f, 28f, paint)
-
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = if (isMusicHovered) 3.5f else 1.8f
-                paint.color = if (isMusicHovered) Color.parseColor("#1ED760") else Color.parseColor("#1DB954")
-                canvas.drawRoundRect(musicCardRect, 28f, 28f, paint)
-
-                // Sound wave disc icon
-                val mcx = musicCardRect.centerX()
-                paint.style = Paint.Style.FILL
-                paint.color = Color.parseColor("#1DB954")
-                canvas.drawCircle(mcx, 265f, 30f, paint)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 3f
-                paint.color = Color.BLACK
-                canvas.drawCircle(mcx, 265f, 12f, paint)
-
-                paint.style = Paint.Style.FILL
-                paint.textSize = 28f
-                paint.color = Color.parseColor("#F8FAFC")
-                canvas.drawText("LN Music", 510f, 365f, paint)
-
-                paint.textSize = 20f
-                paint.color = Color.parseColor("#1DB954")
-                canvas.drawText("Músicas MP3 do Celular", 510f, 400f, paint)
-
-                if (isMusicHovered && musicBtn != null && musicBtn.hoverProgress > 0f) {
-                    paint.color = Color.parseColor("#1DB954")
-                    paint.strokeWidth = 7f
-                    val progW = (musicCardRect.width() - 40f) * musicBtn.hoverProgress
-                    canvas.drawLine(musicCardRect.left + 20f, musicCardRect.bottom - 12f, musicCardRect.left + 20f + progW, musicCardRect.bottom - 12f, paint)
-                }
-
-                // Info pill
-                paint.style = Paint.Style.FILL
-                paint.color = Color.parseColor("#1E293B")
-                val infoRect = RectF(880f, 150f, 1240f, 440f)
-                canvas.drawRoundRect(infoRect, 22f, 22f, paint)
-                paint.textSize = 22f
-                paint.color = Color.parseColor("#CBD5E1")
-                canvas.drawText("✦ LN Music Player:", 900f, 210f, paint)
-                canvas.drawText("• Importa MP3 do celular", 900f, 255f, paint)
-                canvas.drawText("• Salva permanentemente", 900f, 300f, paint)
-                canvas.drawText("• Controles Play/Pause +/-10s", 900f, 345f, paint)
-
-            } else if (homePanel.currentTab == HomeTab.JOGOS) {
-                // Jogos Tab: Empty State with message "Nenhum jogo disponível."
-                paint.style = Paint.Style.FILL
-                paint.textSize = 34f
-                paint.color = Color.parseColor("#94A3B8")
-                val msg = "Nenhum jogo disponível."
-                val mw = paint.measureText(msg)
-                canvas.drawText(msg, 640f - mw / 2f, 360f, paint)
-
-                paint.textSize = 22f
-                paint.color = Color.parseColor("#64748B")
-                val subMsg = "Novos jogos e experiências em breve no Lunar VR."
-                val sw = paint.measureText(subMsg)
-                canvas.drawText(subMsg, 640f - sw / 2f, 410f, paint)
-
-            } else if (homePanel.currentTab == HomeTab.PC_SHARE) {
-                // Conexão Compartilhamento PC Tab: Meta Quest Link inspired interface
-                paint.style = Paint.Style.FILL
-                paint.color = Color.parseColor("#161E31")
-                val shareCardRect = RectF(120f, 150f, 1160f, 620f)
-                canvas.drawRoundRect(shareCardRect, 28f, 28f, paint)
-
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 2f
-                paint.color = Color.parseColor("#00E5FF")
-                canvas.drawRoundRect(shareCardRect, 28f, 28f, paint)
-
-                paint.style = Paint.Style.FILL
-                paint.textSize = 30f
-                paint.color = Color.parseColor("#00E5FF")
-                canvas.drawText("💻 CONEXÃO COMPARTILHAMENTO PC (LUNAR CONNECTIONS)", 160f, 210f, paint)
-
-                paint.textSize = 22f
-                paint.color = Color.parseColor("#E2E8F0")
-                canvas.drawText("Abra o 'Lunar connections.exe' no seu computador Windows e digite a senha abaixo:", 160f, 260f, paint)
-
-                // Large Glowing PIN Box
-                val pinBoxRect = RectF(340f, 300f, 940f, 430f)
-                paint.color = Color.parseColor("#0E1424")
-                canvas.drawRoundRect(pinBoxRect, 20f, 20f, paint)
-
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 3f
-                paint.color = Color.parseColor("#38BDF8")
-                canvas.drawRoundRect(pinBoxRect, 20f, 20f, paint)
-
-                paint.style = Paint.Style.FILL
-                paint.textSize = 54f
-                paint.color = Color.parseColor("#38BDF8")
-                val pinTxt = vrStreamServer.connectionPin
-                val pw = paint.measureText(pinTxt)
-                canvas.drawText(pinTxt, pinBoxRect.centerX() - pw / 2f, 385f, paint)
-
-                // Status info line
-                paint.textSize = 22f
-                val isConn = vrStreamServer.isClientConnected.get()
-                val statusTxt = if (isConn) "● Conectado ao PC (${vrStreamServer.clientIp}) - Transmitindo Tela VR" else "● Aguardando conexão do PC..."
-                paint.color = if (isConn) Color.parseColor("#10B981") else Color.parseColor("#F59E0B")
-                canvas.drawText(statusTxt, 160f, 480f, paint)
-
-                paint.color = Color.parseColor("#94A3B8")
-                canvas.drawText("IP do Celular na rede Wi-Fi: ${vrStreamServer.getLocalIpAddress()}  |  Porta: ${VRStreamServer.PORT}", 160f, 520f, paint)
-
-                // Regenerate button styling
-                val regenBtn = homePanel.buttons.find { it.id == "btn_regen_pin" }
-                val rbRect = RectF(440f, 550f, 840f, 600f)
-                paint.color = if (regenBtn?.isHovered == true) Color.parseColor("#4F46E5") else Color.parseColor("#312E81")
-                canvas.drawRoundRect(rbRect, 16f, 16f, paint)
-                paint.color = Color.WHITE
-                paint.textSize = 20f
-                val rtw = paint.measureText("Novo Código Conexão")
-                canvas.drawText("Novo Código Conexão", rbRect.centerX() - rtw / 2f, 582f, paint)
-
-                if (regenBtn?.isHovered == true && regenBtn.hoverProgress > 0f) {
-                    paint.color = Color.parseColor("#38BDF8")
-                    paint.strokeWidth = 5f
-                    val progW = (rbRect.width() - 20f) * regenBtn.hoverProgress
-                    canvas.drawLine(rbRect.left + 10f, rbRect.bottom - 4f, rbRect.left + 10f + progW, rbRect.bottom - 4f, paint)
-                }
-            }
-
-            // Bottom drag handle
-            ModernIcons.drawDragHandle(
-                canvas, paint, 640f, 742f, 380f, 28f,
-                homeGrabHandle.isHovered, homeGrabHandle.isGrabbed, homeGrabHandle.hoverProgress
-            )
-        }
-    }
-
-    private fun updateBrowserPanels() {
-        // Draw URL bar with spacious modern design (1280x120 texture)
-        urlPanel?.drawCustom { canvas, paint ->
-            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
-
-            // Outer shell with rich dark violet/slate gradient look
-            paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F5131728")
-            canvas.drawRoundRect(RectF(10f, 10f, 1270f, 110f), 28f, 28f, paint)
-
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#475569")
-            canvas.drawRoundRect(RectF(10f, 10f, 1270f, 110f), 28f, 28f, paint)
-
-            // Top-left Close Button '✕'
-            val closeUrlBtn = urlBar.buttons.find { it.id == "url_close_top_left" }
-            ModernIcons.drawCloseButton(canvas, paint, 38f, 60f, 20f, closeUrlBtn?.isHovered == true)
-
-            // Navigation icons (spacious layout)
-            paint.style = Paint.Style.FILL
-            paint.textSize = 32f
-            paint.color = Color.parseColor("#E2E8F0")
-            canvas.drawText("◀    ▶    ↻    ✦", 82f, 70f, paint)
-
-            // Interactive Search/URL field (expanded width: 340f to 1040f)
-            paint.color = Color.parseColor("#1E293B")
-            canvas.drawRoundRect(RectF(340f, 20f, 1040f, 100f), 20f, 20f, paint)
-
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2f
-            paint.color = Color.parseColor("#818CF8")
-            canvas.drawRoundRect(RectF(340f, 20f, 1040f, 100f), 20f, 20f, paint)
-
-            paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#38BDF8")
             paint.textSize = 28f
-            val displayTxt = if (urlBar.displayUrl.length > 46) urlBar.displayUrl.take(46) + "..." else urlBar.displayUrl
-            canvas.drawText("🌐  $displayTxt", 365f, 68f, paint)
+            paint.isFakeBoldText = true
+            paint.color = Color.WHITE
+            canvas.drawText("All", 110f, 65f, paint)
+            paint.isFakeBoldText = false
 
-            // Resize pill button at the right (accented purple/cyan)
-            paint.color = Color.parseColor("#312E81")
-            canvas.drawRoundRect(RectF(1060f, 20f, 1250f, 100f), 20f, 20f, paint)
+            // Dropdown filters on right: "Installed (..)", "Recent"
+            val f1Rect = RectF(830f, 38f, 1020f, 82f)
+            val f2Rect = RectF(1040f, 38f, 1220f, 82f)
+            paint.color = Color.parseColor("#2B343D")
+            canvas.drawRoundRect(f1Rect, 20f, 20f, paint)
+            canvas.drawRoundRect(f2Rect, 20f, 20f, paint)
 
-            paint.style = Paint.Style.STROKE
-            paint.color = Color.parseColor("#A855F7")
-            canvas.drawRoundRect(RectF(1060f, 20f, 1250f, 100f), 20f, 20f, paint)
+            paint.textSize = 19f
+            paint.color = Color.parseColor("#E2E8F0")
+            canvas.drawText("Installed (..) ▾", 855f, 66f, paint)
+            canvas.drawText("Recent ▾", 1075f, 66f, paint)
 
-            paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F8FAFC")
-            paint.textSize = 26f
-            canvas.drawText("⤢ ${urlBar.scaleName}", 1085f, 68f, paint)
-        }
+            // === 4x3 APP CARDS GRID ===
+            val gridStartX = 110f
+            val gridStartY = 110f
+            val colStep = 282f
+            val rowStep = 188f
+            val cardW = 260f
+            val cardH = 140f
 
-        // Draw WebView content
-        val bmp = browserView?.captureBitmap()
-        if (bmp != null) {
-            browserPanel?.copyBitmap(bmp)
-        }
-    }
+            val apps = homePanel.appGrid
 
-    private fun updateEnvironmentPanel() {
-        envVRPanel?.drawCustom { canvas, paint ->
-            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+            for (i in apps.indices) {
+                val app = apps[i]
+                val row = i / 4
+                val col = i % 4
+                val ax = gridStartX + col * colStep
+                val ay = gridStartY + row * rowStep
 
-            // Outer Curved Glass Window shell (Meta Quest / VisionOS style dark acrylic glass)
-            paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#F50D1322")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
+                val btn = homePanel.buttons.find { it.id == "btn_lib_${app.id}" }
+                val isHov = btn?.isHovered == true
 
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2.5f
-            paint.color = Color.parseColor("#38BDF8")
-            canvas.drawRoundRect(RectF(10f, 10f, 1014f, 620f), 35f, 35f, paint)
+                val cardRect = RectF(ax, ay, ax + cardW, ay + cardH)
 
-            // Top-left Close Button '✕'
-            val closeEnvBtn = environmentPanel.buttons.find { it.id == "btn_close_env_top_left" }
-            ModernIcons.drawCloseButton(canvas, paint, 48f, 65f, 20f, closeEnvBtn?.isHovered == true)
-
-                        // Draw '+' and '-' scaling buttons on Environment Panel
-            paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#1E293B")
-            val eMinusRect = RectF(870f, 32f, 930f, 92f)
-            val ePlusRect = RectF(945f, 32f, 1005f, 92f)
-            canvas.drawRoundRect(eMinusRect, 16f, 16f, paint)
-            canvas.drawRoundRect(ePlusRect, 16f, 16f, paint)
-
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 2f
-            paint.color = Color.parseColor("#475569")
-            canvas.drawRoundRect(eMinusRect, 16f, 16f, paint)
-            canvas.drawRoundRect(ePlusRect, 16f, 16f, paint)
-
-            paint.style = Paint.Style.FILL
-            paint.textSize = 30f
-            paint.color = Color.parseColor("#38BDF8")
-            canvas.drawText("－", 886f, 72f, paint)
-            canvas.drawText("＋", 961f, 72f, paint)
-
-            // Header Icon and Title
-            ModernIcons.drawEnvironmentIcon(canvas, paint, 92f, 65f, 30f, Color.parseColor("#00E5FF"))
-
-            paint.style = Paint.Style.FILL
-            paint.textSize = 32f
-            paint.color = Color.parseColor("#00E5FF")
-            canvas.drawText("CENÁRIOS VIRTUAIS VR", 125f, 75f, paint)
-
-            // Description
-            paint.textSize = 24f
-            paint.color = Color.parseColor("#94A3B8")
-            canvas.drawText("Escolha o tema imersivo do seu ambiente espacial:", 50f, 130f, paint)
-
-            // Environment cards (4 high-quality spatial themes)
-            val envs = com.lunarvr.environment.VREnvironmentType.values()
-            for (i in envs.indices) {
-                val env = envs[i]
-                val col = i % 2
-                val row = i / 2
-                val bx = 50f + col * 480f
-                val by = 155f + row * 155f
-                val bw = 440f
-                val bh = 135f
-
-                val isCurrent = (env == environmentManager.currentEnvironment)
-
-                val cardTheme = when (env) {
-                    com.lunarvr.environment.VREnvironmentType.LUNAR_EARTH_VIEW -> Pair("#1E3A8A", "#38BDF8")
-                    com.lunarvr.environment.VREnvironmentType.CYBER_SYNTHWAVE -> Pair("#831843", "#F43F5E")
-                    com.lunarvr.environment.VREnvironmentType.ZEN_FOREST -> Pair("#064E3B", "#10B981")
-                    com.lunarvr.environment.VREnvironmentType.MINIMAL_LOFT -> Pair("#312E81", "#A855F7")
-                    com.lunarvr.environment.VREnvironmentType.PASSTHROUGH_CAM -> Pair("#334155", "#00E5FF")
-                }
-
+                // App Thumbnail Box
                 paint.style = Paint.Style.FILL
-                paint.color = if (isCurrent) Color.parseColor(cardTheme.first) else Color.parseColor("#151D2A")
-                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
+                paint.color = Color.parseColor(app.bgHex)
+                canvas.drawRoundRect(cardRect, 18f, 18f, paint)
 
                 paint.style = Paint.Style.STROKE
-                paint.strokeWidth = if (isCurrent) 3.5f else 1.8f
-                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#334155")
-                canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 24f, 24f, paint)
+                paint.strokeWidth = if (isHov) 2.5f else 1f
+                paint.color = if (isHov) Color.WHITE else Color.parseColor("#44525F")
+                canvas.drawRoundRect(cardRect, 18f, 18f, paint)
 
-                // Title
+                // Dwell Progress bar on card bottom
+                if (isHov && btn != null && btn.hoverProgress > 0f) {
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.WHITE
+                    val progW = (cardW - 16f) * btn.hoverProgress
+                    canvas.drawRoundRect(RectF(ax + 8f, ay + cardH - 6f, ax + 8f + progW, ay + cardH - 2f), 2f, 2f, paint)
+                }
+
+                // App Icon / Logo Graphic
+                val icx = cardRect.centerX()
+                val icy = cardRect.centerY() - 8f
+
+                when (app.id) {
+                    "app_youtube" -> ModernIcons.drawYouTubeIcon(canvas, paint, icx, icy, 46f)
+                    "app_music" -> {
+                        paint.style = Paint.Style.FILL
+                        paint.color = Color.BLACK
+                        canvas.drawCircle(icx, icy, 26f, paint)
+                        paint.style = Paint.Style.STROKE
+                        paint.strokeWidth = 2.5f
+                        paint.color = Color.parseColor("#1DB954")
+                        canvas.drawCircle(icx, icy, 12f, paint)
+                        canvas.drawCircle(icx, icy, 20f, paint)
+                    }
+                    "app_browser" -> ModernIcons.drawGlobeIcon(canvas, paint, icx, icy, 34f, Color.WHITE)
+                    "app_settings" -> ModernIcons.drawSettingsIcon(canvas, paint, icx, icy, 34f, Color.WHITE)
+                    "app_store" -> ModernIcons.drawHomeIcon(canvas, paint, icx, icy, 34f, Color.WHITE)
+                    else -> {
+                        paint.style = Paint.Style.FILL
+                        paint.color = Color.WHITE
+                        canvas.drawCircle(icx, icy, 22f, paint)
+                    }
+                }
+
+                // Notification blue dot (top right)
+                if (app.hasNotificationDot) {
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawCircle(ax + cardW - 14f, ay + 14f, 4f, paint)
+                }
+
+                // App Title label below card
                 paint.style = Paint.Style.FILL
-                paint.textSize = 28f
-                paint.color = if (isCurrent) Color.parseColor(cardTheme.second) else Color.parseColor("#F8FAFC")
-                val activeTag = if (isCurrent) "  ✓ Ativo" else ""
-                canvas.drawText("${env.displayName}$activeTag", bx + 24f, by + 52f, paint)
-
-                // Subtitle
-                paint.textSize = 20f
-                paint.color = Color.parseColor("#94A3B8")
-                canvas.drawText(env.description, bx + 24f, by + 100f, paint)
+                paint.textSize = 19f
+                paint.isFakeBoldText = true
+                paint.color = Color.WHITE
+                val tw = paint.measureText(app.name)
+                canvas.drawText(app.name, ax + (cardW - tw) / 2f, ay + cardH + 28f, paint)
+                paint.isFakeBoldText = false
             }
 
-            // Drag handle at bottom
-            ModernIcons.drawDragHandle(
-                canvas, paint, 512f, 665f, 380f, 28f,
-                envGrabHandle.isHovered, envGrabHandle.isGrabbed, envGrabHandle.hoverProgress
-            )
+            // === BOTTOM FLOATING CONTROL PILL (exact from image) ===
+            // [...] [ Library ] [ Expand ] [ ✕ ]
+            val pillRect = RectF(480f, 696f, 784f, 746f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#D9181D23")
+            canvas.drawRoundRect(pillRect, 25f, 25f, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1f
+            paint.color = Color.parseColor("#37434D")
+            canvas.drawRoundRect(pillRect, 25f, 25f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.textSize = 19f
+            paint.color = Color.parseColor("#E2E8F0")
+            canvas.drawText("Library", 584f, 728f, paint)
+
+            // Close button ✕ on right of bottom pill
+            val closeBtn = homePanel.buttons.find { it.id == "btn_close_home" }
+            val isCloseHov = closeBtn?.isHovered == true
+            paint.color = if (isCloseHov) Color.parseColor("#EF4444") else Color.parseColor("#94A3B8")
+            paint.textSize = 21f
+            canvas.drawText("✕", 735f, 728f, paint)
         }
     }
-
-    private fun updateMusicPanel() {
+private fun updateMusicPanel() {
         val now = android.os.SystemClock.uptimeMillis()
         val elapsed = now - musicOpenStartTime
         val animProg = (elapsed / 220f).coerceIn(0.05f, 1f)

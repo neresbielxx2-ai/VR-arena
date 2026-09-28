@@ -45,6 +45,7 @@ class HeadTracking(private val context: Context) : SensorEventListener {
     // This guarantees the camera starts looking dead-center forward at 0° eye-level horizon!
     private var yawOffsetDeg = 0.0f
     private var pitchOffsetDeg = 0.0f
+    private var rollOffsetDeg = 0.0f
     private val orientationVals = FloatArray(3)
 
     // Camera view matrix
@@ -123,9 +124,11 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                     SensorManager.getOrientation(landscapeMatrix, orientationVals)
                     val yaw = Math.toDegrees(orientationVals[0].toDouble()).toFloat()
                     val pitch = Math.toDegrees(orientationVals[1].toDouble()).toFloat()
-                    if (!yaw.isNaN() && !pitch.isNaN()) {
+                    val roll = Math.toDegrees(orientationVals[2].toDouble()).toFloat()
+                    if (!yaw.isNaN() && !pitch.isNaN() && !roll.isNaN()) {
                         yawOffsetDeg = yaw
                         pitchOffsetDeg = pitch
+                        rollOffsetDeg = roll
                         isCalibrated = true
                     }
                 }
@@ -249,11 +252,10 @@ class HeadTracking(private val context: Context) : SensorEventListener {
                     return
                 }
 
-                // Apply initial calibrated offsets:
-                // Looking straight ahead -> relative angles are zero!
+                // Perfectly zeroed forward view in front of user's eyes wherever phone is held
                 val currentYaw = rawYaw - yawOffsetDeg
                 val currentPitch = rawPitch - pitchOffsetDeg
-                val currentRoll = rawRoll
+                val currentRoll = rawRoll - rollOffsetDeg
 
                 val yawSign = if (invertYaw) -1.0f else 1.0f
                 val pitchSign = if (invertPitch) -1.0f else 1.0f

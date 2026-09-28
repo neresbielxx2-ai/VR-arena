@@ -1,26 +1,50 @@
 package com.lunarvr.ui
 
 enum class HomeTab {
-    APPS,
-    JOGOS,
-    PC_SHARE
+    ALL,
+    INSTALLED,
+    RECENT
 }
+
+data class LibraryAppItem(
+    val id: String,
+    val name: String,
+    val category: String,
+    val bgHex: String,
+    val hasNotificationDot: Boolean = false
+)
 
 class HomePanel(
     private val onOpenYouTube: () -> Unit,
     private val onOpenLNMusic: () -> Unit,
+    private val onOpenBrowser: () -> Unit,
+    private val onOpenSettings: () -> Unit,
     private val onTabChanged: () -> Unit,
-    private val onRegeneratePin: () -> Unit,
     private val onCloseHome: () -> Unit
 ) {
     var isVisible: Boolean = false
-    var currentTab: HomeTab = HomeTab.APPS
+    var currentTab: HomeTab = HomeTab.ALL
 
     var currentCenterX: Float = 0f
     var currentCenterY: Float = 0.12f
     var currentCenterZ: Float = -1.35f
 
     val buttons = mutableListOf<AppButton>()
+
+    val appGrid = listOf(
+        LibraryAppItem("app_store", "Store", "Loja VR", "#F97316"),
+        LibraryAppItem("app_music", "LN Music", "Reprodutor MP3", "#1DB954", true),
+        LibraryAppItem("app_browser", "Browser", "Navegador Web", "#3B82F6"),
+        LibraryAppItem("app_gods", "Gods of Gravity", "Estratégia Espacial", "#7C3AED"),
+        LibraryAppItem("app_nex", "NEX | Video", "Reprodutor Vídeo", "#0284C7", true),
+        LibraryAppItem("app_beat", "Beat Saber", "Jogo de Ritmo", "#DC2626"),
+        LibraryAppItem("app_gallery", "Gallery", "Fotos & Mídia", "#EC4899", true),
+        LibraryAppItem("app_settings", "Settings", "Ajustes do Sistema", "#475569"),
+        LibraryAppItem("app_golf", "Walkabout Mini Golf", "Esporte VR", "#059669"),
+        LibraryAppItem("app_golf_plus", "GOLF+", "Simulador de Golfe", "#D97706", true),
+        LibraryAppItem("app_youtube", "YouTube", "Vídeos em Tela Cheia", "#FFFFFF", true),
+        LibraryAppItem("app_pocket", "Pocket Lands", "Aventura VR", "#B45309")
+    )
 
     init {
         setupButtons(0f, 0.12f, -1.35f)
@@ -32,76 +56,44 @@ class HomePanel(
         currentCenterZ = centerZ
         buttons.clear()
 
-        // Close button at top-left
+        // Bottom Pill Control Bar buttons: [...] [ Library ] [ Resize ] [ Close ]
+        val bottomY = centerY - 0.44f
         buttons.add(
-            AppButton("btn_close_home_top_left", "✕", centerX - 0.52f, centerY + 0.35f, centerZ, 0.08f, 0.08f) {
+            AppButton("btn_close_home", "✕", centerX + 0.18f, bottomY, centerZ, 0.08f, 0.06f) {
                 isVisible = false
                 onCloseHome()
             }
         )
 
-        // 3 Tab Selector Buttons at the top: [ Apps ]  [ Jogos ]  [ Conexão PC ]
-        val tabW = 0.34f
-        val tabH = 0.075f
-        val tabY = centerY + 0.32f
+        // 4 Columns x 3 Rows App Grid
+        // Grid span: width ~1.10m, height ~0.65m
+        val gridStartX = centerX - 0.40f
+        val gridStartY = centerY + 0.18f
+        val colSpacing = 0.26f
+        val rowSpacing = 0.19f
+        val cardW = 0.23f
+        val cardH = 0.16f
 
-        buttons.add(
-            AppButton("btn_tab_apps", "Apps", centerX - 0.38f, tabY, centerZ, tabW, tabH) {
-                currentTab = HomeTab.APPS
-                setupButtons()
-                onTabChanged()
-            }
-        )
+        for (i in appGrid.indices) {
+            val item = appGrid[i]
+            val row = i / 4
+            val col = i % 4
+            val ax = gridStartX + col * colSpacing
+            val ay = gridStartY - row * rowSpacing
 
-        buttons.add(
-            AppButton("btn_tab_jogos", "Jogos", centerX, tabY, centerZ, tabW, tabH) {
-                currentTab = HomeTab.JOGOS
-                setupButtons()
-                onTabChanged()
-            }
-        )
-
-        buttons.add(
-            AppButton("btn_tab_pc_share", "Conexão PC", centerX + 0.38f, tabY, centerZ, tabW, tabH) {
-                currentTab = HomeTab.PC_SHARE
-                setupButtons()
-                onTabChanged()
-            }
-        )
-
-        // Tab-specific interactive elements
-        when (currentTab) {
-            HomeTab.APPS -> {
-                val cardW = 0.38f
-                val cardH = 0.26f
-                val cardY = centerY + 0.04f
-
-                buttons.add(
-                    AppButton("btn_app_youtube", "YouTube VR", centerX - 0.24f, cardY, centerZ, cardW, cardH) {
-                        onOpenYouTube()
+            buttons.add(
+                AppButton("btn_lib_${item.id}", item.name, ax, ay, centerZ, cardW, cardH) {
+                    when (item.id) {
+                        "app_youtube" -> onOpenYouTube()
+                        "app_music" -> onOpenLNMusic()
+                        "app_browser" -> onOpenBrowser()
+                        "app_settings" -> onOpenSettings()
+                        else -> {
+                            // Launch app or feedback
+                        }
                     }
-                )
-
-                buttons.add(
-                    AppButton("btn_app_ln_music", "LN Music", centerX + 0.24f, cardY, centerZ, cardW, cardH) {
-                        onOpenLNMusic()
-                    }
-                )
-            }
-            HomeTab.PC_SHARE -> {
-                val btnW = 0.42f
-                val btnH = 0.08f
-                buttons.add(
-                    AppButton("btn_regen_pin", "Novo Código Conexão", centerX, centerY - 0.22f, centerZ, btnW, btnH) {
-                        onRegeneratePin()
-                        setupButtons()
-                        onTabChanged()
-                    }
-                )
-            }
-            HomeTab.JOGOS -> {
-                // No games available yet
-            }
+                }
+            )
         }
     }
 }

@@ -342,4 +342,133 @@ object ModernIcons {
         paint.style = oldStyle
         paint.strokeWidth = oldWidth
     }
+
+    // Meta Quest Backspace Icon: tag shape with 'X'
+    fun drawBackspaceIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+
+        paint.color = color
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.4f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+
+        val hw = size * 0.55f
+        val hh = size * 0.38f
+        val cut = size * 0.28f
+
+        val path = Path().apply {
+            moveTo(cx + hw, cy - hh)
+            lineTo(cx - hw + cut, cy - hh)
+            lineTo(cx - hw, cy)
+            lineTo(cx - hw + cut, cy + hh)
+            lineTo(cx + hw, cy + hh)
+            close()
+        }
+        canvas.drawPath(path, paint)
+
+        // Cross inside
+        val cr = size * 0.16f
+        val ccx = cx + cut * 0.3f
+        canvas.drawLine(ccx - cr, cy - cr, ccx + cr, cy + cr, paint)
+        canvas.drawLine(ccx - cr, cy + cr, ccx + cr, cy - cr, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+    }
+
+    // Meta Quest Shift Up-Arrow Icon
+    fun drawShiftIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, isFilled: Boolean, color: Int) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+
+        paint.color = color
+        paint.style = if (isFilled) Paint.Style.FILL else Paint.Style.STROKE
+        paint.strokeWidth = 2.4f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+
+        val hw = size * 0.42f
+        val hh = size * 0.45f
+        val stemW = hw * 0.5f
+
+        val path = Path().apply {
+            moveTo(cx, cy - hh)
+            lineTo(cx + hw, cy)
+            lineTo(cx + stemW, cy)
+            lineTo(cx + stemW, cy + hh)
+            lineTo(cx - stemW, cy + hh)
+            lineTo(cx - stemW, cy)
+            lineTo(cx - hw, cy)
+            close()
+        }
+        canvas.drawPath(path, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+    }
+
+    // Enter / Action Right Arrow (clean Meta arrow inside blue key)
+    fun drawRightArrowIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+
+        paint.color = color
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3.5f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+
+        val len = size * 0.45f
+        canvas.drawLine(cx - len, cy, cx + len, cy, paint)
+
+        val head = len * 0.65f
+        canvas.drawLine(cx + len - head, cy - head, cx + len, cy, paint)
+        canvas.drawLine(cx + len - head, cy + head, cx + len, cy, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+    }
+
+    // Meta Quest Hide Keyboard Icon (keyboard with down arrow)
+    fun drawHideKeyboardIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+
+        paint.color = color
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.0f
+
+        val hw = size * 0.55f
+        val hh = size * 0.35f
+        val rect = RectF(cx - hw, cy - hh, cx + hw, cy + hh)
+        canvas.drawRoundRect(rect, 4f, 4f, paint)
+
+        // Miniature keys grid inside
+        paint.style = Paint.Style.FILL
+        for (r in -1..0) {
+            for (c in -2..2) {
+                canvas.drawRect(cx + c * 6f - 1.5f, cy + r * 6f - 1f, cx + c * 6f + 1.5f, cy + r * 6f + 1f, paint)
+            }
+        }
+
+        // Down arrow at bottom
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.2f
+        canvas.drawLine(cx - 5f, cy + hh + 4f, cx, cy + hh + 8f, paint)
+        canvas.drawLine(cx + 5f, cy + hh + 4f, cx, cy + hh + 8f, paint)
+
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+    }
+
 }
