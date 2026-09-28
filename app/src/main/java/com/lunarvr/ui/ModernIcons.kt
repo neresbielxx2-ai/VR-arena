@@ -471,4 +471,17 @@ object ModernIcons {
         paint.strokeWidth = oldWidth
     }
 
+
+    fun drawAppGridIcon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float, color: Int) {
+        paint.color = color
+        paint.style = Paint.Style.FILL
+        val step = size * 0.35f
+        val dotR = size * 0.10f
+        for (row in -1..1) {
+            for (col in -1..1) {
+                canvas.drawCircle(cx + col * step, cy + row * step, dotR, paint)
+            }
+        }
+    }
+
 }
